@@ -22,8 +22,9 @@ import { createHud } from './render/hud.ts';
 import { buildCard } from './render/card.ts';
 import { createEffects, intel, updateEffects } from './render/effects.ts';
 import { createMood, createMusic, fighting, updateMood } from './render/music.ts';
+import { createMinimap, type MinimapCamera } from './render/minimap.ts';
 import { boxSelectWhere, describeAt, describeMode, key, modeClick, pickOwn, rightClick, sameTypeWhere, type UiState } from './render/input.ts';
-import { createRenderer, rendererKind } from './render/renderer.ts';
+import { createRenderer, rendererKind, viewport } from './render/renderer.ts';
 import { applyCommand, factionView, issue, spawnUnit, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
 
 const params = new URLSearchParams(location.search);
@@ -113,6 +114,29 @@ function onScreenIn(x0: number, y0: number, x1: number, y1: number) {
 }
 
 const canvas = renderer.canvas;
+/** Move the camera so a ground point sits in the middle of the map viewport (twice, to settle tilted views). */
+function centerOn(x: number, y: number): void {
+  const vp = viewport(canvas.clientWidth, canvas.clientHeight);
+  for (let i = 0; i < 2; i++) {
+    const [sx, sy] = renderer.toScreen(x, y);
+    renderer.pan(vp.left + vp.width / 2 - sx, vp.top + vp.height / 2 - sy);
+  }
+}
+const minimapCamera: MinimapCamera = {
+  toWorld: (sx, sy) => renderer.toWorld(sx, sy),
+  corners: () => {
+    const vp = viewport(canvas.clientWidth, canvas.clientHeight);
+    const [l, t, r, b] = [vp.left, vp.top, vp.left + vp.width, vp.top + vp.height];
+    return [[l, t], [r, t], [r, b], [l, b]];
+  },
+};
+const minimap = createMinimap(hudRoot, world.map.width, world.map.height, {
+  onCenter: centerOn,
+  onAction: (x, y) => {
+    if (ui.mode.type !== 'none') { ui.mode = { type: 'none' }; return; }
+    send(rightClick(factionView(world, 'human'), ui, x, y));
+  },
+});
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('pointerdown', (e) => {
   const p = renderer.toWorld(e.offsetX, e.offsetY);
@@ -241,6 +265,7 @@ function frame(now: number): void {
   for (const a of updateEffects(fx, view, now)) hud.alert(a);
   music.setCombat(world.winner === null && updateMood(mood, fighting(view), now));
   renderer.render({ world, view, selected: ui.selected, fx, now });
+  minimap.update(view, minimapCamera, now);
   hud.setIntel(intel(view));
   hud.update(world, view, ui.selected, describeMode(ui.mode), speed, paused, Math.round(fps));
   if (world.winner && !summaryShown) {
