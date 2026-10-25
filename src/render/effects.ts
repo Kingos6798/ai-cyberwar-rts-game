@@ -15,10 +15,12 @@ export interface Effects {
   deaths: Mark[];
   pings: Mark[];
   lastAlert: Map<string, number>;
+  /** Where each alert happened (by its text), so tapping the alert can jump the camera there. */
+  alertAt: Map<string, [number, number]>;
 }
 
 export function createEffects(): Effects {
-  return { hp: new Map(), pos: new Map(), flashes: new Map(), deaths: [], pings: [], lastAlert: new Map() };
+  return { hp: new Map(), pos: new Map(), flashes: new Map(), deaths: [], pings: [], lastAlert: new Map(), alertAt: new Map() };
 }
 
 const ALERT_COOLDOWN_MS = 20_000;
@@ -35,7 +37,7 @@ export function updateEffects(fx: Effects, v: FactionView, now: number): string[
     if (before !== undefined && e.hp < before) {
       fx.flashes.set(e.id, now + 150);
       if (mine && 'built' in e) {
-        alert(fx, alerts, `hit:${e.id}`, now, `⚠ Your ${pretty(e.type)} is under attack!`);
+        if (alert(fx, alerts, `hit:${e.id}`, now, `⚠ Your ${pretty(e.type)} is under attack!`)) fx.alertAt.set(alerts[alerts.length - 1]!, [e.x, e.y]);
         fx.pings.push({ x: e.x, y: e.y, until: now + 2000, color: 0xe5534b });
       }
     }
@@ -63,6 +65,7 @@ export function updateEffects(fx: Effects, v: FactionView, now: number): string[
     const cx = Math.trunc(ourHalf.reduce((s, e) => s + e.x, 0) / ourHalf.length);
     const cy = Math.trunc(ourHalf.reduce((s, e) => s + e.y, 0) / ourHalf.length);
     if (alert(fx, alerts, `spotted:${ourHalf[0]!.sector}`, now, `⚠ AI forces spotted in sector ${ourHalf[0]!.sector}: ${composition(ourHalf)}`)) {
+      fx.alertAt.set(alerts[alerts.length - 1]!, [cx, cy]);
       fx.pings.push({ x: cx, y: cy, until: now + 3000, color: 0xffd866 });
     }
   }
@@ -73,6 +76,7 @@ export function updateEffects(fx: Effects, v: FactionView, now: number): string[
     if (alert(fx, alerts, key, now, `⚠ Enemy forces approaching your ${pretty(b.type)} (${b.sector}): ${composition(near)}`)) {
       const cx = Math.trunc(near.reduce((s, e) => s + e.x, 0) / near.length);
       const cy = Math.trunc(near.reduce((s, e) => s + e.y, 0) / near.length);
+      fx.alertAt.set(alerts[alerts.length - 1]!, [cx, cy]);
       fx.pings.push({ x: cx, y: cy, until: now + 3000, color: 0xffd866 });
     }
   }

@@ -27,33 +27,56 @@ import { createMinimap, type MinimapCamera } from './render/minimap.ts';
 import { createGroups, groupCenter, ownIds, recallGroup, saveGroup, tapGroup } from './render/groups.ts';
 import { createSound, cueFor } from './render/sound.ts';
 import { boxSelectWhere, describeAt, describeMode, key, modeClick, pickOwn, rightClick, sameTypeWhere, type UiState } from './render/input.ts';
-import { createMobileBar, isTouchUi, loadSettings, touchWords } from './render/mobile.ts';
+import { batterySaverActive, createMobileBar, isTouchUi, loadSettings, promptResume, touchWords } from './render/mobile.ts';
+import { compatible, fastForward, snapshot, type SavedMatch } from './harness/resume.ts';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { createRenderer, rendererKind, viewport } from './render/renderer.ts';
 import { createGestures, type Gesture } from './render/touch.ts';
 import { setWording, word } from './render/wording.ts';
-import { applyCommand, factionView, issue, MAPS, spawnUnit, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
+import { applyCommand, ECONOMY, factionView, issue, MAPS, spawnUnit, START, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
 
 const params = new URLSearchParams(location.search);
 // The phone's settings menu (mobile port) saves view, map and opponent; URL options still win.
 const saved = loadSettings();
-const aiParam = params.get('ai') ?? (saved.ai && OPPONENTS[saved.ai] ? saved.ai : 'training');
+let vibrateOn = saved.vibrate ?? true;
+// Phones close apps in the background: offer to pick up a saved match (scripted opponents only, see resume.ts).
+const SAVE_KEY = 'ai-cyberwar-save';
+const clock = (t: number) => `${Math.trunc(t / TICK_RATE / 60)}:${String(Math.trunc(t / TICK_RATE) % 60).padStart(2, '0')}`;
+let resume: SavedMatch | null = null;
+if (!params.has('seed') && !params.has('human') && !params.has('ai')) {
+  let s: SavedMatch | null = null;
+  try { s = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null'); } catch { /* storage blocked */ }
+  if (s && compatible(s) && OPPONENTS[s.ai] && MAPS[s.mapId]
+    && await promptResume(`${MAPS[s.mapId]!.name} against the ${s.ai} AI${s.quick ? ' (quick match)' : ''}, at ${clock(s.tick)}.`)) resume = s;
+}
+const savedLlm = !params.get('ai') && !resume && saved.ai === 'llm';
+const aiParam = resume?.ai ?? params.get('ai') ?? (savedLlm ? 'llm' : saved.ai && OPPONENTS[saved.ai] ? saved.ai : 'training');
+// Quick match (mobile port): a richer start and faster claiming, for short sessions on a phone.
+const quick = resume ? resume.quick : params.has('quick') || !!saved.quick;
+if (quick) {
+  START.data = 600 * 1000;
+  START.workers = 5;
+  ECONOMY.claimTicks = 60;
+  ECONOMY.lightLinkTicks = 40;
+}
 const blind = aiParam === 'blind';
 // Outside the sim, so Math.random is fine: the blind pick must not be guessable from the seed.
 const useLlm = aiParam === 'llm' || (blind && Math.random() < 0.5);
 const strategy = useLlm || blind ? STRATEGIES[params.get('base') ?? 'boom'] ?? STRATEGIES.boom! : OPPONENTS[aiParam] ?? TRAINING;
-const seed = Number(params.get('seed') ?? Date.now() % 100000);
+const seed = resume?.seed ?? Number(params.get('seed') ?? Date.now() % 100000);
 const humanBot = STRATEGIES[params.get('human') ?? ''];
 // Model names use only these characters; anything else is dropped (the name is shown in HTML).
-const cloud = params.get('provider') === 'openai';
+const cloud = params.get('provider') === 'openai' || savedLlm;
 let model = (params.get('model') ?? (cloud ? '' : 'qwen3:8b')).replace(/[^\w.:/-]/g, '');
 const ollama = params.get('ollama');
 let client: LlmClient | null = null;
+// D-020: the player's own key, entered when needed, kept for the session (or on this device if they ask).
+const keyStore = (s: () => Storage): KeyStorage => ({
+  getItem: (k) => s().getItem(k), setItem: (k, v) => s().setItem(k, v), removeItem: (k) => s().removeItem(k),
+});
+const [keySession, keyLocal] = [keyStore(() => sessionStorage), keyStore(() => localStorage)];
 if (useLlm && cloud) {
-  // D-020: the player's own key, entered here, kept for the session (or on this device if they ask).
-  const store = (s: () => Storage): KeyStorage => ({
-    getItem: (k) => s().getItem(k), setItem: (k, v) => s().setItem(k, v), removeItem: (k) => s().removeItem(k),
-  });
-  const [session, local] = [store(() => sessionStorage), store(() => localStorage)];
+  const [session, local] = [keySession, keyLocal];
   if (params.has('newkey')) forgetKey(session, local);
   let apiKey = loadKey(session, local);
   if (!apiKey || !model) {
@@ -70,7 +93,7 @@ if (useLlm && cloud) {
 const general = client ? createGeneral('ai', createLlmBrain(client, 'ai'), strategy, { seed }) : null;
 const aiName = blind ? 'AI (blind test)' : general ? `The Model (${model})` : `AI (${strategy.name})`;
 // ?map=duel|long picks the map (#5); unknown ids fall back to Duel.
-const mapParam = params.get('map') ?? saved.map ?? '';
+const mapParam = resume?.mapId ?? params.get('map') ?? saved.map ?? '';
 const mapId = MAPS[mapParam] ? mapParam : 'duel';
 const session = createSession({ seed, mapId, controllers: {
   ai: general ?? createScriptedBot('ai', strategy, seed),
@@ -115,11 +138,11 @@ hud.onNarrowSelection((ids) => { ui.selected = new Set(ids); });
 let cursor: [number, number] = [0, 0];
 let dragStart: [number, number] | null = null;
 let panLast: [number, number] | null = null;
-let paused = stress === 0 && !params.has('autostart');
+let paused = stress === 0 && (!params.has('autostart') || resume !== null);
 // Alert sounds (#4) wait for the Start click; with ?autostart, for the first click or key press.
 const sound = createSound();
-let waitingForStart = paused;
-if (paused) hud.showStart(() => { paused = false; waitingForStart = false; sound.start(); });
+let waitingForStart = paused && !resume;
+if (waitingForStart) hud.showStart(() => { paused = false; waitingForStart = false; sound.start(); });
 hud.onAlert((text) => { const cue = cueFor(text); if (cue) sound.play(cue, performance.now()); });
 const toggleSound = () => { const on = sound.toggleMute(); hud.message(on ? '🔔 Alert sounds on' : '🔕 Alert sounds off'); return on; };
 hud.setSoundToggle(!sound.muted, toggleSound);
@@ -158,6 +181,8 @@ const minimapCamera: MinimapCamera = {
   },
 };
 const minimap = createMinimap(hudRoot, world.map.width, world.map.height, {
+  // Phones: a smaller minimap tucked under the toolbar (mobile port).
+  ...(touchUi ? { maxWidth: 140, maxHeight: 90 } : {}),
   onCenter: centerOn,
   onAction: (x, y) => {
     if (ui.mode.type !== 'none') { ui.mode = { type: 'none' }; return; }
@@ -230,7 +255,30 @@ const describeAtWords = (v: Parameters<typeof describeAt>[0], x: number, y: numb
 // right click), or place/aim when a mode is active. Double tap: every unit of that type on screen.
 // Long press: what is this? One finger drags the map (or a selection box with ⬚ Box on); two fingers
 // pan and pinch-zoom. Everything goes through the same command functions as the mouse.
-const gestures = createGestures({ boxMode: () => mobileBar?.boxMode ?? false });
+const gestures = createGestures({
+  boxMode: () => mobileBar?.boxMode ?? false,
+  // A drag that starts on one of your selected units is an order: release on the target.
+  commandFrom: (sx, sy) => {
+    const [x, y] = renderer.toWorld(sx, sy);
+    const view = factionView(world, 'human');
+    const hit = pickOwn(view, x, y, fingerRadius());
+    return hit !== null && ui.selected.has(hit) && view.units.some((u) => u.id === hit);
+  },
+});
+const orderLine = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+orderLine.id = 'order-line';
+orderLine.innerHTML = '<line stroke="#55ff99" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round"/><circle r="10" fill="none" stroke="#55ff99" stroke-width="3"/>';
+orderLine.style.display = 'none';
+hudRoot.appendChild(orderLine);
+function drawOrderLine(g: { x0: number; y0: number; x1: number; y1: number } | null): void {
+  orderLine.style.display = g ? '' : 'none';
+  if (!g) return;
+  const line = orderLine.querySelector('line')!;
+  const ring = orderLine.querySelector('circle')!;
+  line.setAttribute('x1', String(g.x0)); line.setAttribute('y1', String(g.y0));
+  line.setAttribute('x2', String(g.x1)); line.setAttribute('y2', String(g.y1));
+  ring.setAttribute('cx', String(g.x1)); ring.setAttribute('cy', String(g.y1));
+}
 let tipTimer = 0;
 /** World units per screen pixel right now, so finger-sized hit areas follow the zoom. */
 const worldPerPx = () => Math.abs(renderer.toWorld(100, 0)[0] - renderer.toWorld(0, 0)[0]) / 100;
@@ -272,6 +320,15 @@ function onGesture(g: Gesture): void {
     case 'boxEnd':
       renderer.setBox(null);
       ui.selected = new Set(boxSelectWhere(view, onScreenIn(g.x0, g.y0, g.x1, g.y1)));
+      return;
+    case 'commandStart': return;
+    case 'command': drawOrderLine(g); return;
+    case 'commandCancel': drawOrderLine(null); return;
+    case 'commandEnd': {
+      drawOrderLine(null);
+      const [x, y] = renderer.toWorld(g.x1, g.y1);
+      send(rightClick(view, ui, x, y));
+    }
   }
 }
 function showTip(sx: number, sy: number, x: number, y: number): void {
@@ -297,10 +354,32 @@ const mobileBar = touchUi ? createMobileBar(hudRoot, {
   deselect: () => { ui.selected.clear(); ui.mode = { type: 'none' }; },
   fit: () => renderer.fit(),
   onBoxMode: () => {},
+  idleWorker: () => {
+    // Each press jumps to the next idle engineer, so all of them can be put to work in turn.
+    const idle = factionView(world, 'human').units.filter((u) => u.role === 'worker' && u.order === 'idle');
+    if (idle.length === 0) { hud.message('No idle engineers'); return; }
+    const u = idle[idleCycle++ % idle.length]!;
+    ui.selected = new Set([u.id]);
+    centerOn(u.x, u.y);
+  },
+  army: () => {
+    const view = factionView(world, 'human');
+    const ids = view.units.filter((u) => u.role !== 'worker').map((u) => u.id);
+    if (ids.length === 0) { hud.message('No combat units yet'); return; }
+    ui.selected = new Set(ids);
+    const c = groupCenter(view, ids);
+    if (c) centerOn(c[0], c[1]);
+  },
 }, {
-  current: { renderer: kind, map: mapId, ai: OPPONENTS[aiParam] ? aiParam : 'training' },
+  current: {
+    renderer: kind, map: mapId, ai: useLlm && cloud ? 'llm' : OPPONENTS[aiParam] ? aiParam : 'training', quick,
+    vibrate: vibrateOn, battery: saved.battery ?? 'auto',
+  },
   maps: Object.values(MAPS).map((m) => ({ id: m.id, name: m.name })),
-  opponents: Object.keys(OPPONENTS),
+  opponents: [...Object.keys(OPPONENTS), 'llm'],
+  onLiveChange: (next) => { vibrateOn = next.vibrate; void batterySaverActive(next.battery).then((on) => { saver = on; }); },
+  forgetKey: () => forgetKey(keySession, keyLocal),
+  onNewGame: () => { discardSave = true; try { localStorage.removeItem(SAVE_KEY); } catch { /* nothing saved */ } },
 }) : null;
 // Installed as an app (mobile port): cache the game for offline play. Production builds only.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
@@ -354,6 +433,44 @@ window.addEventListener('keydown', (e) => {
   send(key(factionView(world, 'human'), ui, world.map, k, cursor));
 });
 
+// Vibration (mobile port): a buzz when you're attacked or a unit is ready. Haptics falls back to the
+// browser's vibration where there is no native app.
+let lastBuzz = 0;
+function buzz(style: ImpactStyle): void {
+  if (!vibrateOn || !touchUi || performance.now() - lastBuzz < 1500) return;
+  lastBuzz = performance.now();
+  Haptics.impact({ style }).catch(() => {});
+}
+let armySize = factionView(world, 'human').units.filter((u) => u.role !== 'worker').length;
+
+// Battery saver: draw at most 30 frames a second (the sim keeps its pace). Auto checks the battery each minute.
+let saver = false;
+const checkBattery = () => void batterySaverActive(loadSettings().battery ?? 'auto').then((on) => { saver = on; });
+checkBattery();
+setInterval(checkBattery, 60_000);
+let lastDraw = 0;
+
+// Auto-pause when the app goes to the background, and save so a closed app can resume (resume.ts).
+let discardSave = false;
+let idleCycle = 0;
+const canSave = !general && !humanBot && stress === 0;
+const aiKey = OPPONENTS[aiParam] ? aiParam : 'training';
+function saveNow(): void {
+  if (!canSave || discardSave) return;
+  try {
+    if (world.winner !== null) localStorage.removeItem(SAVE_KEY);
+    else if (world.tick > 0) localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot(game, { seed, mapId, ai: aiKey, quick })));
+  } catch { /* storage full or blocked: no resume */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { paused = true; saveNow(); }
+});
+window.addEventListener('pagehide', saveNow);
+setInterval(() => { if (!paused) saveNow(); }, 15_000);
+
+// Tapping an alert jumps the camera to where it happened.
+hud.onAlertTap(([x, y]) => centerOn(x, y));
+
 // Fixed-timestep loop: the sim advances at TICK_RATE × speed regardless of frame rate.
 let accumulator = 0;
 let seenRejections = 0;
@@ -364,6 +481,8 @@ let summaryShown = false;
 let last = performance.now();
 let fps = 60;
 function frame(now: number): void {
+  if (saver && now - lastDraw < 32) { requestAnimationFrame(frame); return; }
+  lastDraw = now;
   const deltaMS = Math.min(250, now - last);
   last = now;
   if (deltaMS > 0) fps += (1000 / deltaMS - fps) * 0.05;
@@ -401,7 +520,15 @@ function frame(now: number): void {
 
   const view = factionView(world, 'human');
   for (const id of ui.selected) if (!world.entities.has(id)) ui.selected.delete(id);
-  for (const a of updateEffects(fx, view, now)) hud.alert(a);
+  for (const a of updateEffects(fx, view, now)) {
+    hud.alert(a, fx.alertAt.get(a));
+    const cue = cueFor(a);
+    if (cue === 'attacked') buzz(ImpactStyle.Heavy);
+    else if (cue === 'approaching' || cue === 'spotted') buzz(ImpactStyle.Medium);
+  }
+  const army = view.units.filter((u) => u.role !== 'worker').length;
+  if (army > armySize) buzz(ImpactStyle.Light);
+  armySize = army;
   music.setCombat(world.winner === null && updateMood(mood, fighting(view), now));
   renderer.render({ world, view, selected: ui.selected, fx, now });
   minimap.update(view, minimapCamera, now);
@@ -431,5 +558,10 @@ function frame(now: number): void {
     select: (ids) => { ui.selected = new Set(ids); },
   }, groups), (b) => send(b.run()));
   requestAnimationFrame(frame);
+}
+if (resume) {
+  fastForward(session, resume, () => recordStats(stats, world));
+  renderer.fit();
+  hud.message(`Resumed at ${clock(world.tick)}. Tap ▶ to play.`);
 }
 requestAnimationFrame(frame);

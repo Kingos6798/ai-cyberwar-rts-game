@@ -14,7 +14,9 @@ export interface Hud {
   setCard(buttons: CardButton[], onPress: (b: CardButton) => void): void;
   tooltip(text: string | null, sx: number, sy: number): void;
   showStart(onStart: () => void): void;
-  alert(text: string): void;
+  /** `at`: where it happened; the alert is then tappable and jumps the camera there. */
+  alert(text: string, at?: [number, number]): void;
+  onAlertTap(fn: (at: [number, number]) => void): void;
   setIntel(html: string): void;
   /** Replace the end-of-match banner with the post-match summary; `attach` wires up its interactivity. */
   showSummary(html: string, attach: (el: HTMLElement) => void): void;
@@ -54,6 +56,10 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
     <pre id="hud-text" class="hud-panel" hidden></pre>
     <div id="hud-banner" hidden></div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>(`#${id}`)!;
+  $('hud-alerts').addEventListener('click', (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>('.jump');
+    if (el) onAlertTap([Number(el.dataset.x), Number(el.dataset.y)]);
+  });
   const messages: { text: string; at: number }[] = [];
   // Write to the DOM only when content changes: rewriting every frame causes needless repaints.
   const shown = new Map<string, string>();
@@ -107,7 +113,8 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
     }
   }
   let intelHtml = '';
-  const alerts: { text: string; at: number }[] = [];
+  const alerts: { text: string; at: number; where?: [number, number] }[] = [];
+  let onAlertTap: (at: [number, number]) => void = () => {};
   let guideKey = '';
   let powerWasFull = false;
   let summaryShown = false;
@@ -148,7 +155,7 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
       const now = performance.now();
       while (messages.length && now - messages[0]!.at > 4000) messages.shift();
       while (alerts.length && now - alerts[0]!.at > 6000) alerts.shift();
-      setHtml('hud-alerts', alerts.map((m) => `<div>${m.text}</div>`).join(''));
+      setHtml('hud-alerts', alerts.map((m) => (m.where ? `<div class="jump" data-x="${m.where[0]}" data-y="${m.where[1]}" title="Show me">${m.text} <span class="dim">▸ show</span></div>` : `<div>${m.text}</div>`)).join(''));
       setHtml('hud-messages', messages.map((m) => `<div>${m.text}</div>`).join(''));
 
       // Re-render the guide only when progress changes (keeps text selectable and cheap).
@@ -218,12 +225,13 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
         <button type="button" id="start-btn">Start</button>`);
       el.querySelector('#start-btn')!.addEventListener('click', () => { el.hidden = true; onStart(); });
     },
-    alert(text) {
-      alerts.push({ text, at: performance.now() });
+    alert(text, where) {
+      alerts.push({ text, at: performance.now(), ...(where ? { where } : {}) });
       if (alerts.length > 3) alerts.shift();
       onAlert(text);
     },
     onNarrowSelection(fn) { onNarrow = fn; },
+    onAlertTap(fn) { onAlertTap = fn; },
     onAlert(fn) { onAlert = fn; },
     setSoundToggle(on, toggle) {
       const btn = $('t-sound');

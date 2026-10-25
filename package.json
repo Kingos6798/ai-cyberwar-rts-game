@@ -28,6 +28,7 @@
     "@capacitor/android": "^8.5.3",
     "@capacitor/cli": "^8.5.3",
     "@capacitor/core": "^8.5.3",
+    "@capacitor/haptics": "^8.0.2",
     "pixi.js": "^8.22.0",
     "three": "0.186.1"
   },

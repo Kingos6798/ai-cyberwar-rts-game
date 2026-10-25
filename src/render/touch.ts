@@ -18,7 +18,10 @@ export type Gesture =
   | { type: 'pinch'; x: number; y: number; factor: number }
   | { type: 'boxStart'; x0: number; y0: number }
   | { type: 'box' | 'boxEnd'; x0: number; y0: number; x1: number; y1: number }
-  | { type: 'boxCancel' };
+  | { type: 'boxCancel' }
+  | { type: 'commandStart'; x0: number; y0: number }
+  | { type: 'command' | 'commandEnd'; x0: number; y0: number; x1: number; y1: number }
+  | { type: 'commandCancel' };
 
 interface Finger { x: number; y: number; startX: number; startY: number; startT: number }
 
@@ -31,13 +34,17 @@ export interface Gestures {
   tick(t: number): Gesture[];
 }
 
-/** `boxMode`: whether one-finger drags draw a selection box (else they pan). */
-export function createGestures(opts: { boxMode: () => boolean }): Gestures {
+/**
+ * `boxMode`: whether one-finger drags draw a selection box (else they pan). `commandFrom`: whether a drag
+ * starting at this point is an order (it starts on a selected unit): the finger then draws an order line.
+ */
+export function createGestures(opts: { boxMode: () => boolean; commandFrom?: (x: number, y: number) => boolean }): Gestures {
   const fingers = new Map<number, Finger>();
   // pending: one finger down, not moved yet. drag: one finger panning or boxing. multi: two fingers.
   // spent: the gesture already produced its result; ignore until every finger is up.
   let mode: 'idle' | 'pending' | 'drag' | 'multi' | 'spent' = 'idle';
   let boxing = false;
+  let commanding = false;
   let lastTap: { x: number; y: number; t: number } | null = null;
   let pair: { cx: number; cy: number; dist: number } | null = null;
 
@@ -45,15 +52,16 @@ export function createGestures(opts: { boxMode: () => boolean }): Gestures {
     const [a, b] = [...fingers.values()];
     return { cx: (a!.x + b!.x) / 2, cy: (a!.y + b!.y) / 2, dist: Math.hypot(a!.x - b!.x, a!.y - b!.y) || 1 };
   };
-  const release = () => { if (fingers.size === 0) { mode = 'idle'; boxing = false; pair = null; } };
+  const release = () => { if (fingers.size === 0) { mode = 'idle'; boxing = false; commanding = false; pair = null; } };
 
   return {
     down(id, x, y, t) {
       fingers.set(id, { x, y, startX: x, startY: y, startT: t });
       if (fingers.size === 1 && mode === 'idle') { mode = 'pending'; return []; }
       if (fingers.size === 2 && mode !== 'spent') {
-        const out: Gesture[] = boxing ? [{ type: 'boxCancel' }] : [];
+        const out: Gesture[] = boxing ? [{ type: 'boxCancel' }] : commanding ? [{ type: 'commandCancel' }] : [];
         boxing = false;
+        commanding = false;
         mode = 'multi';
         pair = two();
         return out;
@@ -69,6 +77,10 @@ export function createGestures(opts: { boxMode: () => boolean }): Gestures {
       if (mode === 'pending') {
         if (Math.hypot(x - f.startX, y - f.startY) <= TOUCH.tapSlop) return [];
         mode = 'drag';
+        if (!opts.boxMode() && opts.commandFrom?.(f.startX, f.startY)) {
+          commanding = true;
+          return [{ type: 'commandStart', x0: f.startX, y0: f.startY }, { type: 'command', x0: f.startX, y0: f.startY, x1: x, y1: y }];
+        }
         if (opts.boxMode()) {
           boxing = true;
           return [{ type: 'boxStart', x0: f.startX, y0: f.startY }, { type: 'box', x0: f.startX, y0: f.startY, x1: x, y1: y }];
@@ -76,6 +88,7 @@ export function createGestures(opts: { boxMode: () => boolean }): Gestures {
         return [{ type: 'pan', dx: x - f.startX, dy: y - f.startY }];
       }
       if (mode === 'drag') {
+        if (commanding) return [{ type: 'command', x0: f.startX, y0: f.startY, x1: x, y1: y }];
         return boxing ? [{ type: 'box', x0: f.startX, y0: f.startY, x1: x, y1: y }] : [{ type: 'pan', dx: x - px, dy: y - py }];
       }
       if (mode === 'multi' && pair && fingers.size === 2) {
@@ -96,6 +109,9 @@ export function createGestures(opts: { boxMode: () => boolean }): Gestures {
         out = [{ type: double ? 'doubleTap' : 'tap', x, y }];
         lastTap = double ? null : { x, y, t };
         mode = 'spent';
+      } else if (mode === 'drag' && commanding) {
+        out = [{ type: 'commandEnd', x0: f.startX, y0: f.startY, x1: x, y1: y }];
+        mode = 'spent';
       } else if (mode === 'drag' && boxing) {
         out = [{ type: 'boxEnd', x0: f.startX, y0: f.startY, x1: x, y1: y }];
         mode = 'spent';
@@ -108,7 +124,7 @@ export function createGestures(opts: { boxMode: () => boolean }): Gestures {
     },
     cancel(id) {
       fingers.delete(id);
-      if (fingers.size === 0) { mode = 'idle'; boxing = false; pair = null; } else mode = 'spent';
+      if (fingers.size === 0) { mode = 'idle'; boxing = false; commanding = false; pair = null; } else mode = 'spent';
     },
     tick(t) {
       if (mode !== 'pending' || fingers.size !== 1) return [];

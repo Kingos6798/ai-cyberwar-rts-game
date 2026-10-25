@@ -81,3 +81,31 @@ describe('touch gestures', () => {
     expect(t.tick(5000)).toEqual([]);
   });
 });
+
+describe('drag to command (press a selected unit, drag to a target)', () => {
+  const onUnit = (x: number, y: number) => Math.hypot(x - 100, y - 100) < 20;
+
+  it('a drag that starts on a selected unit draws an order line instead of panning', () => {
+    const t = createGestures({ boxMode: () => false, commandFrom: onUnit });
+    t.down(1, 100, 100, 0);
+    expect(t.move(1, 150, 120, 10)).toEqual([{ type: 'commandStart', x0: 100, y0: 100 }, { type: 'command', x0: 100, y0: 100, x1: 150, y1: 120 }]);
+    expect(t.move(1, 300, 200, 20)).toEqual([{ type: 'command', x0: 100, y0: 100, x1: 300, y1: 200 }]);
+    expect(t.up(1, 310, 210, 30)).toEqual([{ type: 'commandEnd', x0: 100, y0: 100, x1: 310, y1: 210 }]);
+  });
+
+  it('a drag that starts elsewhere still pans, and Box mode still wins', () => {
+    const t = createGestures({ boxMode: () => false, commandFrom: onUnit });
+    t.down(1, 400, 400, 0);
+    expect(t.move(1, 450, 400, 10)).toEqual([{ type: 'pan', dx: 50, dy: 0 }]);
+    const b = createGestures({ boxMode: () => true, commandFrom: onUnit });
+    b.down(1, 100, 100, 0);
+    expect(b.move(1, 150, 150, 10)[0]).toEqual({ type: 'boxStart', x0: 100, y0: 100 });
+  });
+
+  it('a second finger cancels the order line', () => {
+    const t = createGestures({ boxMode: () => false, commandFrom: onUnit });
+    t.down(1, 100, 100, 0);
+    t.move(1, 150, 150, 10);
+    expect(t.down(2, 300, 300, 20)).toEqual([{ type: 'commandCancel' }]);
+  });
+});
