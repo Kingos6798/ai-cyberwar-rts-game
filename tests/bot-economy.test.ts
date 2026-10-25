@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createScriptedBot, STRATEGIES, TRAINING } from '../src/ai/scripted.ts';
 import { createSession, tickSession } from '../src/harness/session.ts';
-import { buildings, factionView, MILLI, spawnUnit, TICK_RATE, TILE, type Command } from '../src/sim/index.ts';
+import { buildings, dist2, factionView, MILLI, spawnBuilding, spawnUnit, TICK_RATE, TILE, units, type Command } from '../src/sim/index.ts';
 import { newGame } from './helpers.ts';
 
 describe('scripted bot economy', () => {
@@ -32,5 +32,48 @@ describe('scripted bot economy', () => {
     for (let i = 0; i < 3; i++) spawnUnit(game.world, 'industrial_robot', 'ai', core.x - 3 * TILE, core.y + i * TILE);
     game.world.tick += 100; // past the reaction delay
     expect(attackMoves(bot.decide(factionView(game.world, 'ai')))).toHaveLength(0);
+  });
+});
+
+describe('idle workers once every site is claimed (#33)', () => {
+  /** Human owns every site and link, has a built SOC and no Data: nothing left to claim, light or buy. */
+  function claimedOut() {
+    const game = newGame();
+    for (const s of game.world.sites.values()) if (s.kind !== 'core') s.owner = 'human';
+    for (const l of game.world.links) l.owner = 'human';
+    const noc = buildings(game.world).find((b) => b.type === 'noc')!;
+    spawnBuilding(game.world, 'soc', 'human', noc.x - 3 * TILE, noc.y + 4 * TILE).built = true;
+    game.world.factions.human.data = 0;
+    for (const u of units(game.world)) if (u.faction === 'human') game.world.entities.delete(u.id);
+    const engineers = Array.from({ length: 4 }, (_, i) => spawnUnit(game.world, 'field_engineer', 'human', noc.x + 2 * TILE, noc.y + (i - 2) * TILE));
+    return { game, noc, engineers };
+  }
+  const boom = STRATEGIES.boom!;
+
+  it('idle workers all help finish an unbuilt building', () => {
+    const { game, noc, engineers } = claimedOut();
+    const rack = spawnBuilding(game.world, 'server_rack', 'human', noc.x - 3 * TILE, noc.y - 4 * TILE);
+    const cmds = createScriptedBot('human', boom, 1).decide(factionView(game.world, 'human'));
+    const builders = cmds.flatMap((c) => (c.type === 'construct' && c.building === rack.id ? c.units : []));
+    expect(builders.sort()).toEqual(engineers.map((e) => e.id).sort());
+  });
+
+  it('with nothing to do, idle workers far from base go back near the core', () => {
+    const { game, noc, engineers } = claimedOut();
+    const stray = engineers[0]!;
+    stray.x = noc.x + 20 * TILE;
+    const cmds = createScriptedBot('human', boom, 1).decide(factionView(game.world, 'human'));
+    const home = cmds.find((c) => c.type === 'move' && c.units.includes(stray.id));
+    expect(home).toBeDefined();
+    if (home?.type === 'move') expect(dist2(home.x, home.y, noc.x, noc.y)).toBeLessThan((5 * TILE) ** 2);
+    // Workers already near the core are left alone (no wasted actions).
+    expect(cmds.filter((c) => c.type === 'move' && c.units.some((id) => id !== stray.id))).toEqual([]);
+  });
+
+  it('does not train more workers when there is no work for the idle ones', () => {
+    const { game } = claimedOut();
+    game.world.factions.human.data = 2000 * MILLI;
+    const cmds = createScriptedBot('human', { ...boom, racks: 0, defenses: 0 }, 1).decide(factionView(game.world, 'human'));
+    expect(cmds.filter((c) => c.type === 'train' && c.unit === 'field_engineer')).toEqual([]);
   });
 });
