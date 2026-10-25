@@ -5,7 +5,8 @@ import { createScriptedBot, STRATEGIES } from '../src/ai/scripted.ts';
 import { runMatch, runMatchAsync } from '../src/harness/match.ts';
 import { attackEveryTurn } from '../src/ai/llm/control.ts';
 import { pressureTest } from '../src/harness/balance.ts';
-import { digestView, factionView } from '../src/sim/index.ts';
+import { matchReport, type MatchRecord } from '../src/ai/llm/report.ts';
+import { DATA_VERSION, digestView, factionView, GAME_VERSION } from '../src/sim/index.ts';
 import { newGame } from './helpers.ts';
 
 // Phase 2: full matches against a real (async) model, and the Gate 2 numbers from its turn log.
@@ -66,5 +67,41 @@ describe('turn stats', () => {
     expect(s).toMatchObject({ turns: 21, orders: 39, rejected: 2, invalidPct: 5.1, fallbacks: { late: 1, invalid: 1, error: 0 } });
     expect(s.p50).toBe(0.9);
     expect(s.p95).toBe(1.35);
+  });
+});
+
+describe('saved results (--out)', () => {
+  const rec = (over: Partial<MatchRecord>): MatchRecord =>
+    ({ general: 'llm', opponent: 'control', seed: 1, winner: 'ai', ticks: 100, turns: [], ...over });
+
+  it('summarizes win rates per opponent and overall, and the gap to the control', () => {
+    const r = matchReport({ model: 'stub', options: { matches: '2' }, matches: [
+      rec({ seed: 1 }), rec({ seed: 2, winner: 'human' }),
+      rec({ opponent: 'rush', seed: 1 }), rec({ opponent: 'rush', seed: 2, winner: null }),
+      rec({ general: 'control', seed: 1, winner: 'human' }), rec({ general: 'control', seed: 2, winner: 'human' }),
+      rec({ general: 'control', opponent: 'rush', seed: 1 }), rec({ general: 'control', opponent: 'rush', seed: 2, winner: 'human' }),
+    ] });
+    expect(r).toMatchObject({ gameVersion: GAME_VERSION, dataVersion: DATA_VERSION, model: 'stub', options: { matches: '2' } });
+    expect(r.summary.llm).toEqual({ matches: 4, wins: 2, winPct: 50 });
+    expect(r.summary.control).toEqual({ matches: 4, wins: 1, winPct: 25 });
+    expect(r.summary.gap).toBe(25);
+    expect(r.summary.byOpponent.control).toEqual({ llm: { matches: 2, wins: 1, winPct: 50 }, control: { matches: 2, wins: 0, winPct: 0 } });
+    expect(r.summary.byOpponent.rush!.llm).toEqual({ matches: 2, wins: 1, winPct: 50 });
+  });
+
+  it('leaves out the side that did not play', () => {
+    const r = matchReport({ model: null, options: {}, matches: [rec({ general: 'control' })] });
+    expect(r.summary).toMatchObject({ llm: null, control: { winPct: 100 }, gap: null, stats: null });
+  });
+
+  it('keeps a real General turn log and survives a JSON round trip (no network: stub brain)', async () => {
+    const general = createGeneral('ai', () => turn, boom, { seed: 2 });
+    const m = await runMatchAsync({ seed: 2, maxTicks: 60 * 20, human: createScriptedBot('human', boom, 2), ai: general });
+    const r = matchReport({ model: 'stub', options: {}, matches: [
+      { general: 'llm', opponent: 'boom', seed: 2, winner: m.winner, ticks: m.ticks, turns: general.log },
+    ] });
+    expect(r.matches[0]!.turns.length).toBeGreaterThan(0);
+    expect(r.summary.stats).toEqual(turnStats(general.log));
+    expect(JSON.parse(JSON.stringify(r))).toEqual(r);
   });
 });
