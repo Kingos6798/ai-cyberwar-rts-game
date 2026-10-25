@@ -5,6 +5,9 @@ import { pretty, type CardButton } from './card.ts';
 import { renderGuide } from './guide.ts';
 import { jobText } from './jobs.ts';
 import { HOTKEYS } from './input.ts';
+import { ALERT_PREFIX, createSounds, cueFor } from './sound.ts';
+
+export const POWER_FULL_ALERT = `${ALERT_PREFIX.power}: new units will wait. Claim substations for more Power.`;
 
 export interface Hud {
   update(world: World, view: FactionView, selected: Set<number>, modeText: string, speed: number, paused: boolean, fps: number): void;
@@ -30,6 +33,7 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
       <span class="t-compute" title="Compute: training speed, shared by all your buildings that are training. Server Racks add 5; extra SOCs add nothing.">Compute <b id="t-compute"></b></span>
       <span class="t-plug" title="Pull the Plug: black out a zone, freezing AI units and unpowering buildings">Plug <span id="t-plug"></span></span>
       <span class="dim t-meta" id="t-meta"></span>
+      <button type="button" id="t-sound" style="background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer"></button>
     </div>
     <div id="hud-mode" class="hud-panel"></div>
     <div id="hud-messages"></div>
@@ -46,6 +50,21 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
     <pre id="hud-text" class="hud-panel" hidden></pre>
     <div id="hud-banner" hidden></div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>(`#${id}`)!;
+  // Alert sounds: silent until Start is clicked (or, with no start screen, the first click or key press).
+  const sounds = createSounds();
+  let startPending = false;
+  const unlockOnGesture = () => { if (!startPending) sounds.unlock(); };
+  window.addEventListener('pointerdown', unlockOnGesture);
+  window.addEventListener('keydown', unlockOnGesture);
+  const soundButton = $('t-sound');
+  const showSound = () => {
+    soundButton.textContent = sounds.muted ? '🔕' : '🔔';
+    soundButton.title = `Alert sounds ${sounds.muted ? 'off' : 'on'} (click to turn ${sounds.muted ? 'on' : 'off'})`;
+    soundButton.setAttribute('aria-pressed', String(!sounds.muted));
+  };
+  soundButton.addEventListener('click', () => { sounds.toggleMute(); showSound(); });
+  showSound();
+  const ring = (text: string) => { const cue = cueFor(text); if (cue) sounds.play(cue); };
   const messages: { text: string; at: number }[] = [];
   // Write to the DOM only when content changes: rewriting every frame causes needless repaints.
   const shown = new Map<string, string>();
@@ -131,7 +150,8 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
       const powerFull = powerHeadroom(v) === 0;
       if (powerFull && !powerWasFull && performance.now() - powerAlertAt > 30_000) {
         powerAlertAt = performance.now();
-        alerts.push({ text: '⚡ Power full: new units will wait. Claim substations for more Power.', at: powerAlertAt });
+        alerts.push({ text: POWER_FULL_ALERT, at: powerAlertAt });
+        ring(POWER_FULL_ALERT);
       }
       powerWasFull = powerFull;
 
@@ -206,10 +226,12 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
         <p><b>How:</b> claim Data Sources, connect them to your base with fiber, build a SOC, train an army, attack.
         The checklist on the left walks you through it. Hover anything on the map to learn what it is.</p>
         <button type="button" id="start-btn">Start</button>`;
-      el.querySelector('#start-btn')!.addEventListener('click', () => { el.hidden = true; onStart(); });
+      startPending = true;
+      el.querySelector('#start-btn')!.addEventListener('click', () => { el.hidden = true; startPending = false; sounds.unlock(); onStart(); });
     },
     alert(text) {
       alerts.push({ text, at: performance.now() });
+      ring(text);
       if (alerts.length > 3) alerts.shift();
     },
     onNarrowSelection(fn) { onNarrow = fn; },

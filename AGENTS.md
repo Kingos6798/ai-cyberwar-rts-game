@@ -40,11 +40,13 @@ npm run llm-turn -- --provider openai --model <model>   # same against an OpenAI
 npm run llm-match -- --model qwen3:8b --human control --matches 30 --with-control   # Gate 2 bar (D-019): LLM vs the control head-to-head, plus the control-vs-control baseline
 npm run llm-match -- --model qwen3:8b --matches 30 --with-control   # secondary: LLM General vs every scripted bot, plus the control on the same seeds
 npm run llm-match -- --control --matches 30                         # control only (attack every turn, no model)
+npm run llm-match -- --model qwen3:8b --human control --matches 30 --with-control --out results.json   # also save every match, the General's turn logs and the summary (with game + data version)
 npm run build
 # Visual checks: with `npm run dev` running, open (or screenshot headless) e.g.
 # http://localhost:5173/?seed=3&human=boom&ai=turtle&autostart&skip=40
 # human=<strategy> lets a bot play your side, autostart skips the start screen, skip=N fast-forwards N seconds.
 # Play the LLM General (needs `ollama serve`): http://localhost:5173/?ai=llm&model=qwen3:8b  · blind test: ?ai=blind
+npm run shot -- "http://localhost:5173/?seed=3&human=boom&ai=turtle&autostart" shot.png --wait 20   # headless screenshot after 20 s of real time (needs `npm run dev`); prints page errors, exits 1 if the page threw. Chrome/Edge/Chromium, or set BROWSER_PATH
 ```
 
 ## Definition of done

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createGeneral, type TurnLog } from '../src/ai/llm/general.ts';
-import { turnStats } from '../src/ai/llm/stats.ts';
+import { matchResults, turnStats, type MatchRecord } from '../src/ai/llm/stats.ts';
 import { createScriptedBot, STRATEGIES } from '../src/ai/scripted.ts';
 import { runMatch, runMatchAsync } from '../src/harness/match.ts';
-import { attackEveryTurn } from '../src/ai/llm/control.ts';
+import { attackEveryTurn, createControl } from '../src/ai/llm/control.ts';
 import { pressureTest } from '../src/harness/balance.ts';
-import { digestView, factionView } from '../src/sim/index.ts';
+import { DATA_VERSION, digestView, factionView, GAME_VERSION } from '../src/sim/index.ts';
 import { newGame } from './helpers.ts';
 
 // Phase 2: full matches against a real (async) model, and the Gate 2 numbers from its turn log.
@@ -66,5 +66,47 @@ describe('turn stats', () => {
     expect(s).toMatchObject({ turns: 21, orders: 39, rejected: 2, invalidPct: 5.1, fallbacks: { late: 1, invalid: 1, error: 0 } });
     expect(s.p50).toBe(0.9);
     expect(s.p95).toBe(1.35);
+  });
+});
+
+describe('llm-match results file (issue #28)', () => {
+  // No network: a stub brain stands in for the model, and the control plays the same seeds.
+  const play = (brain: 'general' | 'control', seed: number): MatchRecord => {
+    const ai = brain === 'general'
+      ? createGeneral('ai', () => turn, boom, { seed })
+      : createControl('ai', boom, seed);
+    const r = runMatch({ seed, maxTicks: 2 * 60 * 20, human: createScriptedBot('human', boom, seed), ai });
+    return { opponent: 'boom', brain, seed, winner: r.winner, ticks: r.ticks, turns: brain === 'general' && 'log' in ai ? ai.log as TurnLog[] : [] };
+  };
+
+  it('carries game and data version, options, every match with its turn log, and the summary', () => {
+    const matches = [play('general', 1), play('general', 2), play('control', 1), play('control', 2)];
+    matches[0]!.winner = 'ai'; // fixed outcomes, so the summary is easy to check
+    matches[1]!.winner = 'human';
+    matches[2]!.winner = 'ai';
+    matches[3]!.winner = 'ai';
+    const out = matchResults({ model: 'stub', options: { matches: 2, human: 'boom' }, matches });
+    expect(out).toMatchObject({ gameVersion: GAME_VERSION, dataVersion: DATA_VERSION, model: 'stub', options: { matches: 2, human: 'boom' } });
+    expect(out.matches).toHaveLength(4);
+    expect(out.matches[0]!.turns.length).toBeGreaterThan(0);
+    expect(out.matches[2]!.turns).toEqual([]);
+    expect(out.summary.general).toEqual({ matches: 2, wins: 1, winPct: 50 });
+    expect(out.summary.control).toEqual({ matches: 2, wins: 2, winPct: 100 });
+    expect(out.summary.gap).toBe(-50);
+    expect(out.summary.byOpponent).toEqual({ boom: { general: 50, control: 100 } });
+    // Turn stats cover the General's turns only.
+    expect(out.summary.turns).toEqual(turnStats([...matches[0]!.turns, ...matches[1]!.turns]));
+  });
+
+  it('round-trips through JSON unchanged (plain data only)', () => {
+    const out = matchResults({ model: 'stub', options: {}, matches: [play('general', 3)] });
+    expect(JSON.parse(JSON.stringify(out))).toEqual(out);
+  });
+
+  it('control-only runs have no General summary and no gap', () => {
+    const out = matchResults({ model: null, options: { control: true }, matches: [play('control', 1)] });
+    expect(out.summary.general).toBeNull();
+    expect(out.summary.gap).toBeNull();
+    expect(out.summary.control?.matches).toBe(1);
   });
 });
