@@ -18,9 +18,10 @@ import { createHud } from './render/hud.ts';
 import { buildCard } from './render/card.ts';
 import { createEffects, intel, updateEffects } from './render/effects.ts';
 import { createMood, createMusic, fighting, updateMood } from './render/music.ts';
+import { createGroups, groupCenter, ownIds, recallGroup, saveGroup, tapGroup } from './render/groups.ts';
 import { boxSelectWhere, describeAt, describeMode, key, modeClick, pickOwn, rightClick, sameTypeWhere, type UiState } from './render/input.ts';
 import { createMobileBar, isTouchUi, touchWords } from './render/mobile.ts';
-import { createRenderer, rendererKind } from './render/renderer.ts';
+import { createRenderer, rendererKind, viewport } from './render/renderer.ts';
 import { createGestures, type Gesture } from './render/touch.ts';
 import { setWording, word } from './render/wording.ts';
 import { applyCommand, factionView, issue, spawnUnit, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
@@ -77,6 +78,7 @@ const hud = createHud(hudRoot, aiName);
 const chat = createChatPanel(hudRoot, 'The Model', TICK_RATE);
 
 const ui: UiState = { selected: new Set(), mode: { type: 'none' } };
+const groups = createGroups();
 hud.onNarrowSelection((ids) => { ui.selected = new Set(ids); });
 let cursor: [number, number] = [0, 0];
 let dragStart: [number, number] | null = null;
@@ -98,6 +100,17 @@ function onScreenIn(x0: number, y0: number, x1: number, y1: number) {
     const [sx, sy] = renderer.toScreen(x, y);
     return sx >= lx && sx <= hx && sy >= ly && sy <= hy;
   };
+}
+
+/** Pans so a ground point sits in the middle of the map area (works for every renderer: no camera API needed). */
+function centerOn(p: [number, number] | null): void {
+  if (!p) return;
+  const vp = viewport(canvas.clientWidth, canvas.clientHeight);
+  // Twice, so tilted views whose pan isn't perfectly linear still land on target.
+  for (let i = 0; i < 2; i++) {
+    const [sx, sy] = renderer.toScreen(p[0], p[1]);
+    renderer.pan(vp.left + vp.width / 2 - sx, vp.top + vp.height / 2 - sy);
+  }
 }
 
 const canvas = renderer.canvas;
@@ -259,6 +272,24 @@ window.addEventListener('keydown', (e) => {
   if (k === 't') { hud.toggleTextView(); return; }
   if (k === 'm') { hud.message(music.toggleMute() ? '♪ Music on' : '♪ Music off'); return; }
   if (k === 'home') { renderer.fit(); return; }
+  // Control groups (#3): Ctrl+1–9 saves the selection, 1–9 selects it, a double tap jumps the camera there.
+  const digit = /^Digit([1-9])$/.exec(e.code);
+  if (digit) {
+    const n = Number(digit[1]);
+    const view = factionView(world, 'human');
+    const alive = ownIds(view);
+    if (e.ctrlKey) {
+      e.preventDefault();
+      saveGroup(groups, n, [...ui.selected].filter((id) => alive.has(id)));
+      hud.message(groups.groups.has(n) ? `Group ${n} saved` : `Group ${n} cleared`);
+      return;
+    }
+    const ids = recallGroup(groups, n, alive);
+    if (ids.length === 0) return;
+    ui.selected = new Set(ids);
+    if (tapGroup(groups, n, performance.now())) centerOn(groupCenter(view, ids));
+    return;
+  }
   if (e.ctrlKey && k === 'a') {
     e.preventDefault();
     ui.selected = new Set(factionView(world, 'human').units.filter((u) => u.role !== 'worker').map((u) => u.id));
@@ -341,7 +372,7 @@ function frame(now: number): void {
   hud.setCard(buildCard(view, ui, {
     setMode: (m) => { ui.mode = m; },
     select: (ids) => { ui.selected = new Set(ids); },
-  }), (b) => send(b.run()));
+  }, groups), (b) => send(b.run()));
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

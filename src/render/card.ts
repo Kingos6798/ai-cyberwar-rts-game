@@ -3,6 +3,7 @@
 import {
   BUILDINGS, MILLI, powerHeadroom, UNITS, type BuildingTypeId, type Command, type FactionView, type UnitTypeId,
 } from '../sim/index.ts';
+import { freeGroup, ownIds, recallGroup, saveGroup, type Groups } from './groups.ts';
 import type { UiState } from './input.ts';
 
 export interface CardButton {
@@ -35,7 +36,7 @@ const BUILD_TIPS: Partial<Record<BuildingTypeId, string>> = {
 export function buildCard(view: FactionView, ui: UiState, actions: {
   setMode: (m: UiState['mode']) => void;
   select: (ids: number[]) => void;
-}): CardButton[] {
+}, groups?: Groups): CardButton[] {
   const units = view.units.filter((u) => ui.selected.has(u.id));
   const building = view.buildings.find((b) => ui.selected.has(b.id));
   const workers = units.filter((u) => u.role === 'worker');
@@ -66,7 +67,7 @@ export function buildCard(view: FactionView, ui: UiState, actions: {
   }
   if (building?.type === 'soc') {
     if (!building.built) out.push({ id: 'wait', label: 'Under construction', tip: 'Engineers are building this. Select engineers and right-click it to help.', disabled: 'Not finished', run: () => [] });
-    else for (const [t, k] of [['counter_drone_team', '1'], ['red_team', '2'], ['armored_vehicle', '3']] as const) out.push(train(building, t, k));
+    else for (const [t, k] of [['counter_drone_team', 'U'], ['red_team', 'I'], ['armored_vehicle', 'O']] as const) out.push(train(building, t, k));
   }
   if (units.length === 0 && !building) {
     out.push({
@@ -79,7 +80,7 @@ export function buildCard(view: FactionView, ui: UiState, actions: {
       disabled: view.units.some((u) => u.role !== 'worker') ? undefined : 'No combat units yet',
       run: () => { actions.select(view.units.filter((u) => u.role !== 'worker').map((u) => u.id)); return []; },
     });
-    if (soc) for (const [t, k] of [['counter_drone_team', '1'], ['red_team', '2'], ['armored_vehicle', '3']] as const) out.push(train(soc, t, k));
+    if (soc) for (const [t, k] of [['counter_drone_team', 'U'], ['red_team', 'I'], ['armored_vehicle', 'O']] as const) out.push(train(soc, t, k));
   }
   if (workers.length > 0) {
     out.push({
@@ -104,6 +105,7 @@ export function buildCard(view: FactionView, ui: UiState, actions: {
     } });
     out.push({ id: 'defend', label: 'Return to base', tip: 'Move the selected units back to your NOC.', run: () => (core ? [{ type: 'move', units: army.map((u) => u.id), x: core.x + 3000, y: core.y }] : []) });
   }
+  if (groups) out.push(...groupButtons(view, ui, groups, actions.select));
   if (units.length > 0) out.push({ id: 'stop', label: 'Stop', key: 'S', tip: 'Cancel current orders.', run: () => [{ type: 'stop', units: units.map((u) => u.id) }] });
   out.push({
     id: 'plug', label: 'Pull the Plug', key: 'P',
@@ -111,6 +113,30 @@ export function buildCard(view: FactionView, ui: UiState, actions: {
     disabled: view.plugReadyIn === 0 ? undefined : `Ready in ${Math.ceil((view.plugReadyIn ?? 0) / 20)}s`,
     run: () => { actions.setMode({ type: 'pullThePlug' }); return []; },
   });
+  return out;
+}
+
+/** Control groups (#3): save the selection to a free number, and one button per saved group. */
+function groupButtons(view: FactionView, ui: UiState, groups: Groups, select: (ids: number[]) => void): CardButton[] {
+  const out: CardButton[] = [];
+  const alive = ownIds(view);
+  const free = freeGroup(groups);
+  if (ui.selected.size > 0) {
+    out.push({
+      id: 'group:save', label: free ? `Save as group ${free}` : 'Save as group', key: free ? `Ctrl+${free}` : 'Ctrl+1–9',
+      tip: 'Remember this selection under a number. Press the number (or click its button) to select it again; press it twice to jump the camera there.',
+      disabled: free ? undefined : 'Groups 1–9 are all in use: press Ctrl+number to overwrite one',
+      run: () => { if (free) saveGroup(groups, free, [...ui.selected].filter((id) => alive.has(id))); return []; },
+    });
+  }
+  for (const [n, ids] of [...groups.groups].sort(([a], [b]) => a - b)) {
+    const left = ids.filter((id) => alive.has(id)).length;
+    if (left === 0) continue;
+    out.push({
+      id: `group:${n}`, label: `Group ${n} (${left})`, key: String(n), tip: `Select control group ${n}.`,
+      run: () => { select(recallGroup(groups, n, alive)); return []; },
+    });
+  }
   return out;
 }
 
