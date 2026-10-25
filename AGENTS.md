@@ -39,6 +39,7 @@ npm run llm-turn -- --model qwen3:8b               # one LLM General turn agains
 npm run llm-match -- --model qwen3:8b --human control --matches 30 --with-control   # Gate 2 bar (D-019): LLM vs the control head-to-head, plus the control-vs-control baseline
 npm run llm-match -- --model qwen3:8b --matches 30 --with-control   # secondary: LLM General vs every scripted bot, plus the control on the same seeds
 npm run llm-match -- --control --matches 30                         # control only (attack every turn, no model)
+npm run llm-match -- --model qwen3:8b --human control --matches 30 --with-control --out results.json   # also save every match, the General's turn logs and the summary (with game + data version)
 npm run build
 # Visual checks: with `npm run dev` running, open (or screenshot headless) e.g.
 # http://localhost:5173/?seed=3&human=boom&ai=turtle&autostart&skip=40
