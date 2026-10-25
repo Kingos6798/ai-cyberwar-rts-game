@@ -19,7 +19,8 @@
     "balance": "node scripts/balance.ts",
     "replay": "node scripts/replay.ts",
     "llm-turn": "node scripts/llm-turn.ts",
-    "llm-match": "node scripts/llm-match.ts"
+    "llm-match": "node scripts/llm-match.ts",
+    "shot": "node scripts/shot.ts"
   },
   "dependencies": {
     "pixi.js": "^8.22.0",
