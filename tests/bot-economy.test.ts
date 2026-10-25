@@ -33,4 +33,39 @@ describe('scripted bot economy', () => {
     game.world.tick += 100; // past the reaction delay
     expect(attackMoves(bot.decide(factionView(game.world, 'ai')))).toHaveLength(0);
   });
+
+  // Issue #1 (seventeenth playtest): a rush bot builds no racks, so from 3:00 it banked 500-740 Data it
+  // could not spend. Every balance strategy turns a large, lasting Data surplus into Compute while Power
+  // allows; a short bank (saving up for the next wave) does not count, or rush snowballs.
+  const bankFrom2Min = (name: string, seconds: number) => {
+    // A turtle on the other side keeps the match going, like the playtest where rush stalled at Security Posts.
+    const s = createSession({ seed: 7, controllers: {
+      ai: createScriptedBot('ai', STRATEGIES[name]!, 7), human: createScriptedBot('human', STRATEGIES.turtle!, 7),
+    } });
+    while (s.game.world.tick < 2 * 60 * TICK_RATE) tickSession(s);
+    const ai = s.game.world.factions.ai;
+    const racksBefore = buildings(s.game.world).filter((b) => b.faction === 'ai' && b.type === 'server_rack').length;
+    const end = (2 * 60 + seconds) * TICK_RATE;
+    while (s.game.world.tick < end) {
+      ai.data = Math.max(ai.data, 1500 * MILLI); // keeps banking, as in the playtest
+      tickSession(s);
+    }
+    const rackOrders = s.game.log.filter((c) => c.faction === 'ai' && c.tick >= 2 * 60 * TICK_RATE
+      && c.command.type === 'build' && c.command.building === 'server_rack');
+    expect(s.game.world.winner).toBeNull();
+    return { rackOrders: rackOrders.length, racksBefore, powerFree: ai.powerCap - ai.powerUsed };
+  };
+
+  it.each(['rush', 'boom', 'turtle'])('a %s bot banking well over a rack’s cost for over a minute, with Power to spare, builds a Server Rack', (name) => {
+    const r = bankFrom2Min(name, 90);
+    expect(r.powerFree).toBeGreaterThan(0);
+    // At least one rack beyond what the strategy plans.
+    expect(r.racksBefore + r.rackOrders).toBeGreaterThan(Math.max(r.racksBefore, STRATEGIES[name]!.racks));
+  });
+
+  it.each(['rush', 'boom', 'turtle'])('a %s bot saving up for half a minute builds no spare rack', (name) => {
+    // Planned racks (the strategy's `racks`) may still go up; nothing beyond them.
+    const r = bankFrom2Min(name, 30);
+    expect(r.racksBefore + r.rackOrders).toBeLessThanOrEqual(Math.max(r.racksBefore, STRATEGIES[name]!.racks));
+  });
 });

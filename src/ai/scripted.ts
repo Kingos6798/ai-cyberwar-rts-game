@@ -1,7 +1,7 @@
 // Scripted strategy bots. They play either faction through the same commands and view a human or LLM gets.
 // Strategies are data, so new ones (and balance experiments) need no new logic.
 import {
-  BUILDINGS, createRng, FAIRNESS, isqrt, MILLI, SIGNAL, UNITS, TILE, dist2, sectorCenter, type BuildingTypeId, type Command, type Faction, type FactionView,
+  BUILDINGS, createRng, FAIRNESS, isqrt, MILLI, SIGNAL, TICK_RATE, UNITS, TILE, dist2, sectorCenter, type BuildingTypeId, type Command, type Faction, type FactionView,
   type Rng, type Role, type SectorId, type SiteView, type UnitTypeId, type UnitView,
 } from '../sim/index.ts';
 import type { Controller } from './controller.ts';
@@ -31,10 +31,16 @@ export interface Strategy {
   /** Defend workers, buildings and owned sites anywhere on our half, not just the core (D-018 pressure test). */
   guardOutposts?: boolean;
   /**
-   * Server Racks a bot may add when Data piles up (production is short of Compute, not Data). Off for the
-   * balance strategies: with it, rush snowballed and beat boom and turtle in nearly every match.
+   * Most Server Racks a bot may have once Data piles up (production is short of Compute, not Data).
+   * See `spareWhen` for what counts as piling up.
    */
   spareRacks?: number;
+  /**
+   * Banked Data (milli) that must last `ticks` in a row before spare racks go up. Default: 300 Data, at
+   * once. The balance strategies wait for a large, lasting bank (issue #1): four racks on the instant
+   * trigger let rush snowball, and even one rack on a 300 Data / 20 s trigger moved rush vs boom ~40 points.
+   */
+  spareWhen?: { data: number; ticks: number };
   /**
    * After an attack is wiped out, regroup and rebuild to full strength instead of sending reinforcements in
    * small waves. Off for the balance strategies: on for them it pushed the rush and boom mirrors out of 40-60%.
@@ -44,10 +50,13 @@ export interface Strategy {
   attackAt?: SectorId;
 }
 
+/** Balance strategies add one spare rack only after banking 1,000+ Data for a full minute (issue #1). */
+const BANKED = { data: 1000 * MILLI, ticks: 60 * TICK_RATE };
+
 export const STRATEGIES: Record<string, Strategy> = {
-  rush: { name: 'rush', workers: 4, racks: 0, barricades: 0, defenses: 0, mix: { fast: 2, ranged: 1 }, attackValue: 250, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true },
-  boom: { name: 'boom', workers: 8, racks: 2, barricades: 0, defenses: 1, mix: { fast: 1, ranged: 1, tank: 1 }, attackValue: 700, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true },
-  turtle: { name: 'turtle', workers: 6, racks: 1, barricades: 3, defenses: 3, mix: { ranged: 2, tank: 2, fast: 1 }, attackValue: 900, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true },
+  rush: { name: 'rush', workers: 4, racks: 0, barricades: 0, defenses: 0, mix: { fast: 2, ranged: 1 }, attackValue: 250, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true, spareRacks: 1, spareWhen: BANKED },
+  boom: { name: 'boom', workers: 8, racks: 2, barricades: 0, defenses: 1, mix: { fast: 1, ranged: 1, tank: 1 }, attackValue: 700, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true, spareRacks: 3, spareWhen: BANKED },
+  turtle: { name: 'turtle', workers: 6, racks: 1, barricades: 3, defenses: 3, mix: { ranged: 2, tank: 2, fast: 1 }, attackValue: 900, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true, spareRacks: 2, spareWhen: BANKED },
 };
 
 /** Gentle opponent for learning the game: slow economy, no micro, attacks late. Not part of balance runs. */
@@ -86,7 +95,8 @@ const DEFENSE: Record<Faction, BuildingTypeId> = { human: 'security_post', ai: '
 const GUARD = { range: 6 * TILE, memoryTicks: 60 * 20 };
 /**
  * Spare Data: production speed comes from Compute, shared by all production buildings, so a bot banking
- * more than `data` adds Server Racks (+Compute, up to its strategy's `spareRacks`) while `powerFree` Power is left.
+ * more than `data` adds Server Racks (+Compute, up to its strategy's `spareRacks`) while `powerFree` Power
+ * is left. A strategy's `spareWhen` can ask for a bigger bank held for a while.
  */
 const SURPLUS = { data: 300 * MILLI, powerFree: 4 };
 
@@ -115,6 +125,8 @@ export function createScriptedBot(faction: Faction, initial: Strategy, seed = 1)
   const guardedUntil = new Map<string, number>();
   /** Units sent to attack-move at a threat (no-micro defense), so they aren't re-ordered on the way. */
   const defending = new Set<number>();
+  /** Tick since which Data has stayed above the strategy's spare-rack bank (null while it is below). */
+  let bankingSince: number | null = null;
 
   const bot: ScriptedBot = {
     name: `${initial.name}${initial.focusFire || initial.counterBuild ? '' : '-sloppy'}`,
@@ -125,6 +137,9 @@ export function createScriptedBot(faction: Faction, initial: Strategy, seed = 1)
       const out: Command[] = [];
       reserved = reserved.filter((r) => r.until >= raw.tick);
       const v = { ...raw, data: raw.data - reserved.reduce((sum, r) => sum + r.cost, 0) };
+      const bank = strategy.spareWhen ?? { data: SURPLUS.data, ticks: 0 };
+      bankingSince = v.data >= bank.data ? bankingSince ?? v.tick : null;
+      const banking = bankingSince !== null && v.tick - bankingSince >= bank.ticks;
       const pending = (id: number) => (pendingUntil.get(id) ?? -1) >= v.tick;
       const order = (cmd: Command, ids: number[], cost = 0) => {
         out.push(cmd);
@@ -234,7 +249,7 @@ export function createScriptedBot(faction: Faction, initial: Strategy, seed = 1)
       for (const w of workers) {
         if (w.order !== 'idle' || busy.has(w.id)) continue;
         const wantRelay = SIGNAL.enabled && faction === 'ai' && value(army) >= attackValue;
-        const job = nextJob(v, faction, strategy, core, prod, busy, rng, towardCenter, wantRelay, guarded);
+        const job = nextJob(v, faction, strategy, core, prod, busy, rng, towardCenter, wantRelay, guarded, banking);
         if (!job) break;
         busy.set(w.id, job.key);
         if ('units' in job.cmd) job.cmd.units = [w.id];
@@ -317,7 +332,7 @@ type Job = { key: string; cmd: Command & { units?: number[] } };
 function nextJob(
   v: FactionView, faction: Faction, s: Strategy, core: FactionView['buildings'][number],
   prod: FactionView['buildings'][number] | undefined, busy: Map<number, string>, rng: Rng, toward: number,
-  wantRelay = false, guarded: Set<string> = new Set(),
+  wantRelay = false, guarded: Set<string> = new Set(), banking = false,
 ): Job | null {
   const taken = new Set(busy.values());
   const enemyCore = v.sites.find((x) => x.kind === 'core' && !(x.x === core.x && x.y === core.y));
@@ -343,7 +358,7 @@ function nextJob(
 
   // Data piling up means production is short of Compute, not Data: add a Server Rack.
   const racks = v.buildings.filter((b) => b.type === 'server_rack').length;
-  if (v.data >= SURPLUS.data && racks < (s.spareRacks ?? 0) && v.powerCap - v.powerUsed >= SURPLUS.powerFree
+  if (banking && v.data >= BUILDINGS.server_rack.cost && racks < (s.spareRacks ?? 0) && v.powerCap - v.powerUsed >= SURPLUS.powerFree
     && !taken.has('new:rack')) {
     const [x, y] = spot(v, core, toward, rng);
     return { key: 'new:rack', cmd: { type: 'build', units: [], building: 'server_rack', x, y } };
