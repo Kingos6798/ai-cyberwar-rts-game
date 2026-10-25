@@ -3,7 +3,8 @@ import { createGeneral, DEFAULT_LATENCY, directed, measuredLatencies, TURN_TIMEO
 import { createScriptedBot, STRATEGIES } from '../src/ai/scripted.ts';
 import { runMatch } from '../src/harness/match.ts';
 import { createSession, tickSession } from '../src/harness/session.ts';
-import { DUEL_MAP, factionView, FAIRNESS, sectorCenter, spawnUnit, TILE } from '../src/sim/index.ts';
+import { buildings, DUEL_MAP, factionView, FAIRNESS, sectorCenter, spawnUnit, TICK_RATE, TILE } from '../src/sim/index.ts';
+import { createEnemyMemory, lastSeen, MEMORY_TICKS, observe } from '../src/ai/llm/memory.ts';
 import { command, newGame, run } from './helpers.ts';
 import type { Controller } from '../src/ai/controller.ts';
 
@@ -132,5 +133,73 @@ describe('LLM General', () => {
     expect(directed(boom, { attack: 'C' })).toMatchObject({ attackAt: 'C', attackValue: boom.attackValue, regroup: true });
     expect(directed(boom, { attack: null }).attackValue).toBe(Infinity);
     expect(directed(boom, { attack: null })).not.toHaveProperty('attackAt');
+  });
+});
+
+describe('LLM General: memory of enemy armies out of sight (#30)', () => {
+  /** An AI scout at the human NOC's doorstep, a human army next to it, and a far-off human army it can't see. */
+  function scene() {
+    const game = newGame();
+    const noc = buildings(game.world).find((b) => b.type === 'noc')!;
+    const scout = spawnUnit(game.world, 'botnet_swarm', 'ai', noc.x + 8 * TILE, noc.y);
+    const army = [0, 1, 2].map((i) => spawnUnit(game.world, 'red_team', 'human', noc.x + 9 * TILE, noc.y + (i - 1) * TILE));
+    const hidden = [0, 1].map((i) => spawnUnit(game.world, 'armored_vehicle', 'human', noc.x, noc.y + (10 + i) * TILE));
+    const view = () => factionView(game.world, 'ai');
+    return { game, noc, scout, army, hidden, view };
+  }
+
+  it('is fog-safe: units it never saw never appear', () => {
+    const { game, scout, view } = scene();
+    const m = createEnemyMemory();
+    game.world.entities.delete(scout.id);
+    for (let i = 0; i < 5; i++) { observe(m, view()); game.world.tick += 20; }
+    expect(lastSeen(m, view())).toEqual([]);
+  });
+
+  it('remembers an army after losing sight of it, by sector, with how long ago', () => {
+    const { game, scout, army, hidden, view } = scene();
+    const m = createEnemyMemory();
+    observe(m, view());
+    expect(lastSeen(m, view())).toEqual([]); // in sight: the digest already shows it
+    game.world.entities.delete(scout.id);
+    game.world.tick += 40 * TICK_RATE;
+    observe(m, view());
+    const sector = factionView(game.world, 'human').units.find((u) => u.id === army[0]!.id)!.sector;
+    expect(lastSeen(m, view())).toEqual([{ sector, enemy: { red_team: 3 }, secondsAgo: 40 }]);
+    expect(JSON.stringify(lastSeen(m, view()))).not.toContain('armored_vehicle');
+    expect(hidden).toHaveLength(2);
+  });
+
+  it('forgets once the spot is in sight again and empty, or after about 2 minutes', () => {
+    const { game, noc, scout, army, view } = scene();
+    const m = createEnemyMemory();
+    observe(m, view());
+    game.world.entities.delete(scout.id);
+    observe(m, view());
+    // The army leaves; a new scout sees the empty spot.
+    for (const u of army) game.world.entities.delete(u.id);
+    spawnUnit(game.world, 'botnet_swarm', 'ai', noc.x + 8 * TILE, noc.y);
+    observe(m, view());
+    expect(lastSeen(m, view())).toEqual([]);
+
+    const s2 = scene();
+    const m2 = createEnemyMemory();
+    observe(m2, s2.view());
+    s2.game.world.entities.delete(s2.scout.id);
+    s2.game.world.tick += MEMORY_TICKS;
+    observe(m2, s2.view());
+    expect(lastSeen(m2, s2.view())).toHaveLength(1);
+    s2.game.world.tick += 1;
+    observe(m2, s2.view());
+    expect(lastSeen(m2, s2.view())).toEqual([]);
+  });
+
+  it('puts lastSeen in the turn input, and a busy mid-game turn input stays small', () => {
+    const inputs: string[] = [];
+    const brain: Brain = ({ digest }) => { inputs.push(JSON.stringify(digest)); return turnOf({ tool: 'wait', args: {} }); };
+    const s = createSession({ seed: 5, controllers: { human: createScriptedBot('human', boom, 5), ai: createGeneral('ai', brain, boom, { seed: 5 }) } });
+    while (s.game.world.tick < 8 * 60 * 20 && s.game.world.winner === null) tickSession(s);
+    expect(inputs.some((i) => i.includes('"lastSeen"'))).toBe(true);
+    expect(Math.max(...inputs.map((i) => i.length))).toBeLessThan(2000);
   });
 });

@@ -46,7 +46,8 @@ export function systemPrompt(faction: Faction): string {
     '',
     'Digest: "cores" says where your core and the enemy core are. "army" is the Data value of your combat units; '
       + 'a sector\'s "enemyStrength" (enemy units plus their static defenses) and threat "enemy"/"ours" use the same scale. '
-      + '"economy.data" is what you can spend right now.',
+      + '"economy.data" is what you can spend right now. '
+      + '"lastSeen" (if present) lists enemy combat units you saw earlier but cannot see now, by sector, with seconds since; they may have moved.',
     '',
     'Strategy:',
     '- Economy wins long games: keep 6-10 workers and claim data sources early. Idle workers earn nothing: use expand.',
