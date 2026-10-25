@@ -18,7 +18,8 @@ export interface UiState {
   mode: Mode;
 }
 
-const SOC_UNITS: Record<string, UnitTypeId> = { '1': 'counter_drone_team', '2': 'red_team', '3': 'armored_vehicle' };
+// U / I / O sit together like 1 / 2 / 3 used to; the number keys are control groups now (#3).
+const SOC_UNITS: Record<string, UnitTypeId> = { u: 'counter_drone_team', i: 'red_team', o: 'armored_vehicle' };
 const BUILD_KEYS: Record<string, BuildingTypeId> = { q: 'soc', r: 'server_rack', f: 'barricade', v: 'security_post' };
 
 export const HOTKEYS: [string, string][] = [
@@ -27,7 +28,9 @@ export const HOTKEYS: [string, string][] = [
   ['Right click', 'move / attack / claim site / light link'],
   ['A then click', 'attack-move'],
   ['E', 'train Field Engineer (NOC)'],
-  ['1 / 2 / 3', 'train Counter-Drone / Red Team / Armored Vehicle (SOC)'],
+  ['U / I / O', 'train Counter-Drone / Red Team / Armored Vehicle (SOC)'],
+  ['Ctrl+1–9', 'save the selection as a control group'],
+  ['1–9', 'select that control group (press twice to jump the camera to it)'],
   ['Q / R / F / V then click', 'build SOC / Server Rack / Barricade / Security Post (workers)'],
   ['P then click', 'Pull the Plug'],
   ['G / D', 'army attack / defend the sector under the cursor'],
