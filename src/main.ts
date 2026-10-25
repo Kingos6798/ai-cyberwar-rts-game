@@ -18,6 +18,7 @@ import { createHud } from './render/hud.ts';
 import { buildCard } from './render/card.ts';
 import { createEffects, intel, updateEffects } from './render/effects.ts';
 import { createMood, createMusic, fighting, updateMood } from './render/music.ts';
+import { createSound, cueFor } from './render/sound.ts';
 import { boxSelectWhere, describeAt, describeMode, key, modeClick, pickOwn, rightClick, sameTypeWhere, type UiState } from './render/input.ts';
 import { createRenderer, rendererKind } from './render/renderer.ts';
 import { applyCommand, factionView, issue, spawnUnit, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
@@ -72,7 +73,13 @@ let cursor: [number, number] = [0, 0];
 let dragStart: [number, number] | null = null;
 let panLast: [number, number] | null = null;
 let paused = stress === 0 && !params.has('autostart');
-if (paused) hud.showStart(() => { paused = false; });
+// Alert sounds (#4) wait for the Start click; with ?autostart, for the first click or key press.
+const sound = createSound();
+let waitingForStart = paused;
+if (paused) hud.showStart(() => { paused = false; waitingForStart = false; sound.start(); });
+hud.onAlert((text) => { const cue = cueFor(text); if (cue) sound.play(cue, performance.now()); });
+const toggleSound = () => { const on = sound.toggleMute(); hud.message(on ? '🔔 Alert sounds on' : '🔕 Alert sounds off'); return on; };
+hud.setSoundToggle(!sound.muted, toggleSound);
 let speed = 1;
 
 /** Human commands apply on the next tick; rejections show up as HUD messages. */
@@ -146,8 +153,8 @@ canvas.addEventListener('wheel', (e) => {
 // Music needs a user gesture before it may play; the Start button click is the usual one.
 const music = createMusic();
 const mood = createMood();
-window.addEventListener('pointerdown', () => music.start());
-window.addEventListener('keydown', () => music.start());
+window.addEventListener('pointerdown', () => { music.start(); if (!waitingForStart) sound.start(); });
+window.addEventListener('keydown', () => { music.start(); if (!waitingForStart) sound.start(); });
 
 const held = new Set<string>();
 window.addEventListener('keyup', (e) => held.delete(e.key));
@@ -159,6 +166,7 @@ window.addEventListener('keydown', (e) => {
   if (k === '-') { speed = Math.max(0.5, speed / 2); return; }
   if (k === 't') { hud.toggleTextView(); return; }
   if (k === 'm') { hud.message(music.toggleMute() ? '♪ Music on' : '♪ Music off'); return; }
+  if (k === 'n') { hud.setSoundToggle(toggleSound(), toggleSound); return; }
   if (k === 'home') { renderer.fit(); return; }
   if (e.ctrlKey && k === 'a') {
     e.preventDefault();

@@ -18,7 +18,13 @@ export interface Hud {
   /** Replace the end-of-match banner with the post-match summary; `attach` wires up its interactivity. */
   showSummary(html: string, attach: (el: HTMLElement) => void): void;
   onNarrowSelection(fn: (ids: number[]) => void): void;
+  /** Called with every alert line as it is raised (sound cues, #4). */
+  onAlert(fn: (text: string) => void): void;
+  /** Wires the sound on/off button: `toggle` flips it and returns whether sounds are now on. */
+  setSoundToggle(on: boolean, toggle: () => boolean): void;
 }
+
+export const POWER_FULL_ALERT = '⚡ Power full: new units will wait. Claim substations for more Power.';
 
 export function createHud(root: HTMLElement, aiName: string): Hud {
   root.innerHTML = `
@@ -30,6 +36,7 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
       <span class="t-compute" title="Compute: training speed, shared by all your buildings that are training. Server Racks add 5; extra SOCs add nothing.">Compute <b id="t-compute"></b></span>
       <span class="t-plug" title="Pull the Plug: black out a zone, freezing AI units and unpowering buildings">Plug <span id="t-plug"></span></span>
       <span class="dim t-meta" id="t-meta"></span>
+      <button type="button" id="t-sound" title="Alert sounds on/off (N)"></button>
     </div>
     <div id="hud-mode" class="hud-panel"></div>
     <div id="hud-messages"></div>
@@ -55,6 +62,7 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
   let cardKey = '';
   let selKey: string | null = null;
   let onNarrow: (ids: number[]) => void = () => {};
+  let onAlert: (text: string) => void = () => {};
   const icon: Record<string, string> = { worker: '●', fast: '▲', ranged: '◆', tank: '■' };
   const bar = (hp: number, max: number) => {
     const f = Math.max(0, Math.min(1, hp / max));
@@ -131,7 +139,8 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
       const powerFull = powerHeadroom(v) === 0;
       if (powerFull && !powerWasFull && performance.now() - powerAlertAt > 30_000) {
         powerAlertAt = performance.now();
-        alerts.push({ text: '⚡ Power full: new units will wait. Claim substations for more Power.', at: powerAlertAt });
+        alerts.push({ text: POWER_FULL_ALERT, at: powerAlertAt });
+        onAlert(POWER_FULL_ALERT);
       }
       powerWasFull = powerFull;
 
@@ -211,8 +220,16 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
     alert(text) {
       alerts.push({ text, at: performance.now() });
       if (alerts.length > 3) alerts.shift();
+      onAlert(text);
     },
     onNarrowSelection(fn) { onNarrow = fn; },
+    onAlert(fn) { onAlert = fn; },
+    setSoundToggle(on, toggle) {
+      const btn = $('t-sound');
+      const label = (v: boolean) => { btn.textContent = v ? '🔔 Sounds' : '🔕 Muted'; btn.setAttribute('aria-pressed', String(v)); };
+      label(on);
+      btn.onclick = () => label(toggle());
+    },
     setIntel(html) {
       if (html === intelHtml) return;
       intelHtml = html;

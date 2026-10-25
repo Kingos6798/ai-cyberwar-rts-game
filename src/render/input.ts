@@ -37,6 +37,7 @@ export const HOTKEYS: [string, string][] = [
   ['Ctrl+A', 'select all combat units'],
   ['T', 'toggle the text view (what an LLM General would read)'],
   ['M', 'music on / off'],
+  ['N', 'alert sounds on / off (also the 🔔 button, top bar)'],
   ['Space', 'pause   + / -  game speed'],
   ['Arrows, wheel, middle-drag', 'pan and zoom'],
 ];
