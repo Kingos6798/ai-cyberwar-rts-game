@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AI Cyberwar</string>
+    <string name="title_activity_main">AI Cyberwar</string>
+    <string name="package_name">com.kingos6798.aicyberwar</string>
+    <string name="custom_url_scheme">com.kingos6798.aicyberwar</string>
+</resources>

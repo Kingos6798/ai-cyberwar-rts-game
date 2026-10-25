@@ -1,0 +1,8 @@
+{
+  "appId": "com.kingos6798.aicyberwar",
+  "appName": "AI Cyberwar",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#0b0e12"
+  }
+}

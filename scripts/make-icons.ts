@@ -1,16 +1,19 @@
 // Draws the app icons for the mobile port (public/icon-192.png, icon-512.png): a blue NOC square and an
 // orange AI diamond joined by fiber, on the game's dark background. Plain PNG encoding, no dependencies.
+// Also writes the Android launcher icons when the Capacitor project (android/) exists.
 // Usage: node scripts/make-icons.ts
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
-function png(size: number): Buffer {
+/** `art`: share of the icon the drawing spans (Android adaptive icons crop to the middle ~66%). */
+function png(size: number, art = 1): Buffer {
   const px = Buffer.alloc(size * size * 4);
   const set = (x: number, y: number, [r, g, b]: number[]) => { const i = (y * size + x) * 4; px[i] = r!; px[i + 1] = g!; px[i + 2] = b!; px[i + 3] = 255; };
-  const s = size / 512;
+  const s = (size * art) / 512;
+  const off = (size - size * art) / 2;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const [u, v] = [x / s, y / s];
+      const [u, v] = [(x - off) / s, (y - off) / s];
       let c = [11, 14, 18];
       if (Math.abs(v - 256) < 10 && u > 150 && u < 360) c = [74, 163, 255]; // fiber
       if (Math.abs(u - 150) < 70 && Math.abs(v - 256) < 70) c = [74, 163, 255]; // NOC
@@ -37,3 +40,16 @@ function png(size: number): Buffer {
 
 for (const size of [192, 512]) writeFileSync(`public/icon-${size}.png`, png(size));
 console.log('wrote public/icon-192.png, public/icon-512.png');
+
+if (existsSync('android/app/src/main/res')) {
+  const densities: Record<string, number> = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
+  for (const [d, size] of Object.entries(densities)) {
+    const dir = `android/app/src/main/res/mipmap-${d}`;
+    writeFileSync(`${dir}/ic_launcher.png`, png(size, 0.9));
+    writeFileSync(`${dir}/ic_launcher_round.png`, png(size, 0.8));
+    writeFileSync(`${dir}/ic_launcher_foreground.png`, png(Math.round(size * 2.25), 0.6));
+  }
+  writeFileSync('android/app/src/main/res/values/ic_launcher_background.xml',
+    '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0B0E12</color>\n</resources>\n');
+  console.log('wrote Android launcher icons');
+}
