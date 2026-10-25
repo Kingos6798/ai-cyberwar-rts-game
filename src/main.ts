@@ -140,17 +140,6 @@ function onScreenIn(x0: number, y0: number, x1: number, y1: number) {
   };
 }
 
-/** Pans so a ground point sits in the middle of the map area (works for every renderer: no camera API needed). */
-function centerOn(p: [number, number] | null): void {
-  if (!p) return;
-  const vp = viewport(canvas.clientWidth, canvas.clientHeight);
-  // Twice, so tilted views whose pan isn't perfectly linear still land on target.
-  for (let i = 0; i < 2; i++) {
-    const [sx, sy] = renderer.toScreen(p[0], p[1]);
-    renderer.pan(vp.left + vp.width / 2 - sx, vp.top + vp.height / 2 - sy);
-  }
-}
-
 const canvas = renderer.canvas;
 /** Move the camera so a ground point sits in the middle of the map viewport (twice, to settle tilted views). */
 function centerOn(x: number, y: number): void {
@@ -353,7 +342,8 @@ window.addEventListener('keydown', (e) => {
     const ids = recallGroup(groups, n, alive);
     if (ids.length === 0) return;
     ui.selected = new Set(ids);
-    if (tapGroup(groups, n, performance.now())) centerOn(groupCenter(view, ids));
+    const center = groupCenter(view, ids);
+    if (center && tapGroup(groups, n, performance.now())) centerOn(center[0], center[1]);
     return;
   }
   if (e.ctrlKey && k === 'a') {
