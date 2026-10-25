@@ -38,10 +38,14 @@ export function rendererKind(param: string | null): RendererKind {
   return param === 'three' || param === 'iso' ? param : 'pixi';
 }
 
-/** Screen area the map should fill: right of the 320 px guide panel, above the 110 px command card. */
+/**
+ * Screen area the map should fill: right of the 320 px guide panel, above the 110 px command card. Phones
+ * (mobile port: under 900 px wide) overlay the smaller panels on the map instead.
+ */
 export function viewport(width: number, height: number): { left: number; top: number; width: number; height: number } {
-  const left = 320;
-  const bottom = 110;
+  const phone = width < 900;
+  const left = phone ? 0 : 320;
+  const bottom = phone ? 64 : 110;
   return { left, top: 0, width: width - left, height: height - bottom };
 }
 

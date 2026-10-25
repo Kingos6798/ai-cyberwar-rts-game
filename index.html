@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0e12" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon-192.png" />
     <title>AI Cyberwar RTS</title>
     <style>
       :root { --panel: rgba(13, 17, 23, 0.86); --text: #d8e1ea; --dim: #8a94a6; --human: #4aa3ff; --ai: #ff8a3d; }
@@ -72,6 +77,46 @@
       .summary .replay { margin: 8px 0; }
       .summary .replay button { background: #1f2630; color: var(--text); border: 1px solid #3a4250; border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
       .summary .tip { position: absolute; top: 24px; background: #0b0e12; border: 1px solid #3a4250; border-radius: 4px; padding: 4px 8px; font-size: 12px; pointer-events: none; white-space: nowrap; }
+      /* Mobile port: phone layout (body.touch, set in main.ts). Panels shrink and overlay the map. */
+      canvas { touch-action: none; }
+      body.touch { font-size: 12px; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+      body.touch #hud-top { top: max(4px, env(safe-area-inset-top)); gap: 8px; padding: 3px 8px; font-size: 11px; max-width: calc(100vw - 16px); }
+      body.touch #hud-top > span { width: auto !important; }
+      body.touch #hud-top .t-meta, body.touch #hud-help, body.touch #hud-intel { display: none; }
+      body.touch #hud-guide { top: 34px; left: max(6px, env(safe-area-inset-left)); width: 200px; padding: 4px 8px; font-size: 11px; max-height: 38vh; overflow: auto; }
+      body.touch #hud-guide.collapsed ol { display: none; }
+      body.touch #hud-guide .guide-title::after { content: " ▾"; color: var(--dim); }
+      body.touch #hud-guide.collapsed .guide-title::after { content: " ▸"; }
+      body.touch #hud-guide .how { font-size: 11px; }
+      body.touch #hud-card { left: 6px; right: 6px; bottom: max(4px, env(safe-area-inset-bottom)); transform: none; max-width: none;
+        flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; padding: 4px; gap: 4px; }
+      body.touch #hud-card kbd { display: none; }
+      body.touch #hud-card button { min-width: 82px; flex: 0 0 auto; padding: 6px 6px; font-size: 11px; min-height: 44px; }
+      body.touch #hud-selection { bottom: 68px; left: max(6px, env(safe-area-inset-left)); width: 190px; max-height: 30vh; overflow: auto; font-size: 11px; padding: 4px 6px; }
+      body.touch #hud-selection .sel-row { font-size: 11px; padding: 4px; }
+      body.touch #hud-alerts { top: 34px; font-size: 11px; max-width: 60vw; }
+      body.touch #hud-alerts div { padding: 3px 8px; margin-bottom: 4px; }
+      body.touch #hud-mode { top: 70px; font-size: 12px; }
+      body.touch #hud-messages { top: 96px; font-size: 12px; }
+      body.touch #hud-chat { top: 34px; right: 64px; max-width: 34vw; font-size: 11px; }
+      body.touch #hud-text { display: none; }
+      body.touch #hud-start p { font-size: 14px; margin: 6px 0; } body.touch #hud-start h1 { font-size: 22px; margin: 0 0 6px; }
+      body.touch #hud-banner { max-width: calc(100vw - 32px); font-size: 18px; }
+      body.touch #hud-banner.has-summary { font-size: 12px; max-height: 86vh; }
+      #mobile-bar { display: none; }
+      body.touch #mobile-bar { display: flex; flex-direction: column; gap: 6px; right: max(6px, env(safe-area-inset-right)); top: 34px; padding: 4px; }
+      body.touch #mobile-bar button { width: 48px; min-height: 40px; padding: 0; background: #1f2630; color: var(--text); border: 1px solid #3a4250;
+        border-radius: 6px; font: 600 14px system-ui; }
+      body.touch #mobile-bar button.on { background: #1d3b5c; border-color: var(--human); color: #fff; }
+      body.touch #hud-tip { max-width: 70vw; }
+      #rotate-hint { display: none; }
+      @media (orientation: portrait) {
+        body.touch #rotate-hint { display: block; position: fixed; left: 8px; right: 8px; top: 40%; text-align: center; background: var(--panel);
+          border: 1px solid #ffd866; color: #ffd866; border-radius: 8px; padding: 10px; pointer-events: auto; font-size: 14px; }
+        body.touch #rotate-hint button { margin-left: 8px; background: none; border: 1px solid #ffd866; color: #ffd866; border-radius: 4px; }
+        body.touch #hud-guide { width: 170px; max-height: 30vh; }
+        body.touch #hud-selection { width: 160px; }
+      }
     </style>
   </head>
   <body>

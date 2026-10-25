@@ -19,7 +19,10 @@ import { buildCard } from './render/card.ts';
 import { createEffects, intel, updateEffects } from './render/effects.ts';
 import { createMood, createMusic, fighting, updateMood } from './render/music.ts';
 import { boxSelectWhere, describeAt, describeMode, key, modeClick, pickOwn, rightClick, sameTypeWhere, type UiState } from './render/input.ts';
+import { createMobileBar, isTouchUi, touchWords } from './render/mobile.ts';
 import { createRenderer, rendererKind } from './render/renderer.ts';
+import { createGestures, type Gesture } from './render/touch.ts';
+import { setWording, word } from './render/wording.ts';
 import { applyCommand, factionView, issue, spawnUnit, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
 
 const params = new URLSearchParams(location.search);
@@ -56,6 +59,13 @@ if (stress > 0) {
   }
 }
 
+// Mobile port: phones get touch controls, a toolbar and a compact layout (CSS: body.touch).
+const touchUi = isTouchUi(params);
+if (touchUi) {
+  document.body.classList.add('touch');
+  setWording(touchWords);
+}
+
 const renderer = await createRenderer(rendererKind(params.get('renderer')), world.map.width, world.map.height);
 renderer.fit();
 const fx = createEffects();
@@ -73,6 +83,7 @@ let dragStart: [number, number] | null = null;
 let panLast: [number, number] | null = null;
 let paused = stress === 0 && !params.has('autostart');
 if (paused) hud.showStart(() => { paused = false; });
+const SPEEDS = [0.5, 1, 2, 4];
 let speed = 1;
 
 /** Human commands apply on the next tick; rejections show up as HUD messages. */
@@ -92,6 +103,7 @@ function onScreenIn(x0: number, y0: number, x1: number, y1: number) {
 const canvas = renderer.canvas;
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'touch') return; // touch: see the gesture handlers below
   const p = renderer.toWorld(e.offsetX, e.offsetY);
   if (e.button === 1) { panLast = [e.offsetX, e.offsetY]; return; }
   if (e.button === 2) {
@@ -103,8 +115,9 @@ canvas.addEventListener('pointerdown', (e) => {
   dragStart = [e.offsetX, e.offsetY];
 });
 canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'touch') return;
   cursor = renderer.toWorld(e.offsetX, e.offsetY);
-  hud.tooltip(dragStart || panLast ? null : describeAt(factionView(world, 'human'), cursor[0], cursor[1]), e.clientX, e.clientY);
+  hud.tooltip(dragStart || panLast ? null : describeAtWords(factionView(world, 'human'), cursor[0], cursor[1]), e.clientX, e.clientY);
   if (panLast) {
     renderer.pan(e.offsetX - panLast[0], e.offsetY - panLast[1]);
     panLast = [e.offsetX, e.offsetY];
@@ -112,6 +125,7 @@ canvas.addEventListener('pointermove', (e) => {
   renderer.setBox(dragStart ? { x0: dragStart[0], y0: dragStart[1], x1: e.offsetX, y1: e.offsetY } : null);
 });
 window.addEventListener('pointerup', (e) => {
+  if (e.pointerType === 'touch') return;
   panLast = null;
   renderer.setBox(null);
   if (!dragStart || e.button !== 0) return;
@@ -128,6 +142,7 @@ window.addEventListener('pointerup', (e) => {
   dragStart = null;
 });
 canvas.addEventListener('dblclick', (e) => {
+  if (touchUi) return; // phones synthesize dblclick from taps; double tap is handled by the gestures
   // Select every unit of the clicked type that is on screen (shift adds to the selection).
   const view = factionView(world, 'human');
   const [x, y] = renderer.toWorld(e.offsetX, e.offsetY);
@@ -142,6 +157,90 @@ canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   renderer.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
 }, { passive: false });
+
+const describeAtWords = (v: Parameters<typeof describeAt>[0], x: number, y: number) => {
+  const text = describeAt(v, x, y);
+  return text === null ? null : word(text);
+};
+
+// Touch (mobile port). Tap: select your own unit or building, else order the selection there (the
+// right click), or place/aim when a mode is active. Double tap: every unit of that type on screen.
+// Long press: what is this? One finger drags the map (or a selection box with ⬚ Box on); two fingers
+// pan and pinch-zoom. Everything goes through the same command functions as the mouse.
+const gestures = createGestures({ boxMode: () => mobileBar?.boxMode ?? false });
+let tipTimer = 0;
+/** World units per screen pixel right now, so finger-sized hit areas follow the zoom. */
+const worldPerPx = () => Math.abs(renderer.toWorld(100, 0)[0] - renderer.toWorld(0, 0)[0]) / 100;
+const fingerRadius = () => Math.max(700, Math.round(worldPerPx() * 30));
+function onGesture(g: Gesture): void {
+  const view = factionView(world, 'human');
+  switch (g.type) {
+    case 'tap': {
+      const [x, y] = renderer.toWorld(g.x, g.y);
+      cursor = [x, y];
+      if (ui.mode.type !== 'none') { send(modeClick(view, ui, x, y)); return; }
+      const hit = pickOwn(view, x, y, fingerRadius());
+      const building = hit === null ? undefined : view.buildings.find((b) => b.id === hit);
+      const workersSelected = view.units.some((u) => ui.selected.has(u.id) && u.role === 'worker');
+      // Engineers selected + tap your unfinished building = help build it (the right click), not select it.
+      if (hit !== null && !(building && !building.built && workersSelected)) { ui.selected = new Set([hit]); return; }
+      if (ui.selected.size > 0) send(rightClick(view, ui, x, y));
+      else showTip(g.x, g.y, x, y);
+      return;
+    }
+    case 'doubleTap': {
+      const [x, y] = renderer.toWorld(g.x, g.y);
+      const hit = pickOwn(view, x, y, fingerRadius());
+      const ids = hit === null ? [] : sameTypeWhere(view, hit, onScreenIn(0, 0, canvas.clientWidth, canvas.clientHeight));
+      if (ids.length > 0) ui.selected = new Set(ids);
+      else onGesture({ ...g, type: 'tap' });
+      return;
+    }
+    case 'longPress': {
+      const [x, y] = renderer.toWorld(g.x, g.y);
+      showTip(g.x, g.y, x, y);
+      return;
+    }
+    case 'pan': renderer.pan(g.dx, g.dy); return;
+    case 'pinch': renderer.zoomAt(g.x, g.y, g.factor); return;
+    case 'boxStart': return;
+    case 'box': renderer.setBox(g); return;
+    case 'boxCancel': renderer.setBox(null); return;
+    case 'boxEnd':
+      renderer.setBox(null);
+      ui.selected = new Set(boxSelectWhere(view, onScreenIn(g.x0, g.y0, g.x1, g.y1)));
+  }
+}
+function showTip(sx: number, sy: number, x: number, y: number): void {
+  // Keep the tip (up to 70% of the screen wide) on screen near the right edge.
+  hud.tooltip(describeAtWords(factionView(world, 'human'), x, y), Math.min(sx, window.innerWidth * 0.3 - 24), Math.max(0, sy - 60));
+  clearTimeout(tipTimer);
+  tipTimer = window.setTimeout(() => hud.tooltip(null, 0, 0), 2500);
+}
+for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] as const) {
+  canvas.addEventListener(type, (e) => {
+    if (e.pointerType !== 'touch') return;
+    e.preventDefault();
+    const out = type === 'pointerdown' ? gestures.down(e.pointerId, e.offsetX, e.offsetY, e.timeStamp)
+      : type === 'pointermove' ? gestures.move(e.pointerId, e.offsetX, e.offsetY, e.timeStamp)
+        : type === 'pointerup' ? gestures.up(e.pointerId, e.offsetX, e.offsetY, e.timeStamp)
+          : (gestures.cancel(e.pointerId), []);
+    for (const g of out) onGesture(g);
+  });
+}
+const mobileBar = touchUi ? createMobileBar(hudRoot, {
+  togglePause: () => { paused = !paused; },
+  cycleSpeed: () => { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]!; },
+  deselect: () => { ui.selected.clear(); ui.mode = { type: 'none' }; },
+  fit: () => renderer.fit(),
+  onBoxMode: () => {},
+}) : null;
+// Installed as an app (mobile port): cache the game for offline play. Production builds only.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch((err) => console.warn('offline cache unavailable', err));
+}
+// On a phone the checklist covers the map: tap it to fold it away and back.
+if (touchUi) hudRoot.querySelector('#hud-guide')?.addEventListener('click', (e) => (e.currentTarget as HTMLElement).classList.toggle('collapsed'));
 
 // Music needs a user gesture before it may play; the Start button click is the usual one.
 const music = createMusic();
@@ -219,7 +318,10 @@ function frame(now: number): void {
   music.setCombat(world.winner === null && updateMood(mood, fighting(view), now));
   renderer.render({ world, view, selected: ui.selected, fx, now });
   hud.setIntel(intel(view));
-  hud.update(world, view, ui.selected, describeMode(ui.mode), speed, paused, Math.round(fps));
+  hud.update(world, view, ui.selected, word(describeMode(ui.mode)), speed, paused, Math.round(fps));
+  mobileBar?.setPaused(paused);
+  mobileBar?.setSpeed(speed);
+  for (const gesture of gestures.tick(now)) onGesture(gesture);
   if (world.winner && !summaryShown) {
     summaryShown = true;
     const reveal = blind ? `<p><b>Blind test:</b> you played ${general ? `the LLM General (${model})` : `the scripted ${strategy.name} bot`}.</p>` : '';

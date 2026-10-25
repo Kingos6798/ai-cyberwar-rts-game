@@ -5,6 +5,7 @@ import { pretty, type CardButton } from './card.ts';
 import { renderGuide } from './guide.ts';
 import { jobText } from './jobs.ts';
 import { HOTKEYS } from './input.ts';
+import { word } from './wording.ts';
 
 export interface Hud {
   update(world: World, view: FactionView, selected: Set<number>, modeText: string, speed: number, paused: boolean, fps: number): void;
@@ -94,7 +95,7 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
         + `${bar(b.hp, BUILDINGS[b.type].hp)} <span class="dim">${b.hp}/${BUILDINGS[b.type].hp} hp</span>`
         + (t ? `<div>${trainingText(t)}</div>` : '');
     } else {
-      el.innerHTML = '<span class="dim">Nothing selected. Drag a box or click a unit.</span>';
+      el.innerHTML = `<span class="dim">${word('Nothing selected. Drag a box or click a unit.')}</span>`;
     }
   }
   let intelHtml = '';
@@ -200,12 +201,12 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
     showStart(onStart) {
       const el = $('hud-start');
       el.hidden = false;
-      el.innerHTML = `<h1>AI Cyberwar RTS</h1>
+      el.innerHTML = word(`<h1>AI Cyberwar RTS</h1>
         <p>You are the <b style="color:var(--human)">human ops team</b> (blue, left). The <b style="color:var(--ai)">AI</b> (orange) starts on the right, hidden by fog.</p>
         <p><b>Goal:</b> destroy the AI's Primary Cluster before it destroys your NOC.</p>
         <p><b>How:</b> claim Data Sources, connect them to your base with fiber, build a SOC, train an army, attack.
         The checklist on the left walks you through it. Hover anything on the map to learn what it is.</p>
-        <button type="button" id="start-btn">Start</button>`;
+        <button type="button" id="start-btn">Start</button>`);
       el.querySelector('#start-btn')!.addEventListener('click', () => { el.hidden = true; onStart(); });
     },
     alert(text) {
@@ -235,7 +236,7 @@ export function trainingText(t: NonNullable<ReturnType<typeof training>>): strin
 /** "Building: 45% · 8s (2 engineers)", or a warning when no engineer is assigned. */
 export function constructionText(c: NonNullable<ReturnType<typeof construction>>): string {
   const eta = c.seconds === null
-    ? '<b class="warn">paused: no engineers building it</b> <span class="dim">(select engineers, right-click it)</span>'
+    ? `<b class="warn">paused: no engineers building it</b> <span class="dim">(${word('select engineers, right-click it')})</span>`
     : `<b>${c.seconds}s</b> <span class="dim">(${c.builders} engineer${c.builders === 1 ? '' : 's'}; more build faster)</span>`;
   return `Building: <b>${c.percent}%</b> · ${eta}`;
 }

@@ -41,10 +41,10 @@ export const HOTKEYS: [string, string][] = [
   ['Arrows, wheel, middle-drag', 'pan and zoom'],
 ];
 
-/** Selection by click: the own unit or building under the cursor. */
-export function pickOwn(view: FactionView, x: number, y: number): number | null {
+/** Selection by click: the own unit or building under the cursor (`radius`: wider for fingers on touch screens). */
+export function pickOwn(view: FactionView, x: number, y: number, radius = 700): number | null {
   let best: number | null = null;
-  let bestD = (700) ** 2;
+  let bestD = radius ** 2;
   for (const u of view.units) {
     const d = dist2(u.x, u.y, x, y);
     if (d < bestD) { bestD = d; best = u.id; }
