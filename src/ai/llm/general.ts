@@ -8,6 +8,7 @@
 import { createRng, digestView, TICK_RATE, type Command, type Digest, type Faction, type FactionView } from '../../sim/index.ts';
 import type { Controller } from '../controller.ts';
 import { createScriptedBot, type Strategy } from '../scripted.ts';
+import { filterChat } from './filter.ts';
 import { planTurn, type Directive } from './plan.ts';
 import { parseTurn, type ToolCall } from './tools.ts';
 
@@ -15,7 +16,12 @@ import { parseTurn, type ToolCall } from './tools.ts';
  * The model's raw reply for one turn (JSON text or object), or null for no reply. May return a Promise
  * (a real LLM call); headless matches never wait on promises, so they use synchronous brains plus `latency`.
  */
-export type Brain = (turn: { tick: number; digest: Digest }) => unknown;
+export type Brain = (turn: {
+  tick: number;
+  digest: Digest;
+  /** The General's own last chat lines (after filterChat, oldest first), so it can avoid repeating itself. Never player text. */
+  youSaid?: readonly string[];
+}) => unknown;
 
 export interface TurnLog {
   /** Tick the turn was requested (the digest's tick). */
@@ -55,6 +61,8 @@ export interface GeneralOptions {
 
 /** Default ticks between LLM turns: 20 s, inside the roadmap's 15-30 s strategy cadence. */
 export const TURN_INTERVAL = 20 * TICK_RATE;
+/** How many of its own recent chat lines the General is shown each turn. */
+export const TAUNT_MEMORY = 3;
 /** Default latency of a synchronous brain: 2 s. */
 export const DEFAULT_LATENCY = 2 * TICK_RATE;
 /** Default wait for a reply: 10 s. (Gate 2 asks for p95 under 3 s.) */
@@ -111,11 +119,13 @@ export function createGeneral(faction: Faction, brain: Brain, base: Strategy, op
   let pending: Pending | null = null;
   /** LLM commands waiting to go out, one per decision so the APM cap never drops them. */
   let outbox: Command[] = [];
+  /** The General's last TAUNT_MEMORY chat lines as players saw them (filtered); only its own output. */
+  let said: string[] = [];
 
   function request(view: FactionView): Pending {
     const p: Pending = { tick: view.tick, readyAt: null, arrived: false, reply: null, crashed: null, inflight: null };
     try {
-      const reply = brain({ tick: view.tick, digest: digestView(view) });
+      const reply = brain({ tick: view.tick, digest: digestView(view), youSaid: [...said] });
       if (reply instanceof Promise) {
         const start = performance.now();
         p.inflight = reply.then((r) => { p.reply = r; }, (e) => { p.crashed = String(e); }).finally(() => {
@@ -159,6 +169,8 @@ export function createGeneral(faction: Faction, brain: Brain, base: Strategy, op
       const plan = planTurn(view, entry.calls);
       entry.errors.push(...plan.errors);
       entry.chat = plan.chat;
+      for (const m of plan.chat) { const clean = filterChat(m); if (clean) said.push(clean); }
+      said = said.slice(-TAUNT_MEMORY);
       directive = { ...directive, ...plan.directive };
       outbox = plan.commands;
       ops.strategy = directed(base, directive);

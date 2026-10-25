@@ -34,9 +34,14 @@ describe('General prompt', () => {
     expect(systemPrompt('human')).toContain('- industrial_robot: tank; beat it with ranged (red_team)');
   });
 
-  it('sends only the digest as the user message', () => {
+  it('sends the digest and the General’s own recent chat as the user message', () => {
     const d = digest();
-    expect(JSON.parse(userPrompt(d))).toEqual(d);
+    expect(JSON.parse(userPrompt(d))).toEqual({ digest: d, you_said: [] });
+    expect(JSON.parse(userPrompt(d, ['nice base', 'shame about it']))).toEqual({ digest: d, you_said: ['nice base', 'shame about it'] });
+  });
+
+  it('asks the model not to repeat itself', () => {
+    expect(systemPrompt('ai')).toContain('"you_said"');
   });
 });
 
@@ -52,6 +57,14 @@ describe('Ollama client', () => {
     const messages = calls[0]!.body.messages as { role: string; content: string }[];
     expect(messages.map((m) => m.role)).toEqual(['system', 'user']);
     expect(messages[0]!.content).toBe(systemPrompt('ai'));
+  });
+
+  it('passes the General’s recent lines into the user message', async () => {
+    const { fetch, calls } = fakeFetch(() => ok('{"orders":[]}'));
+    const client = createOllamaClient({ model: 'm', fetch });
+    await createLlmBrain(client, 'ai')({ tick: 0, digest: digest(), youSaid: ['I am everywhere.'] });
+    const messages = calls[0]!.body.messages as { role: string; content: string }[];
+    expect(JSON.parse(messages[1]!.content).you_said).toEqual(['I am everywhere.']);
   });
 
   it('omits think unless asked', async () => {

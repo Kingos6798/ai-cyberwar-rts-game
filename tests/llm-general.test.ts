@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGeneral, DEFAULT_LATENCY, directed, measuredLatencies, TURN_TIMEOUT, type Brain } from '../src/ai/llm/general.ts';
+import { createGeneral, DEFAULT_LATENCY, directed, measuredLatencies, TAUNT_MEMORY, TURN_TIMEOUT, type Brain } from '../src/ai/llm/general.ts';
 import { createScriptedBot, STRATEGIES } from '../src/ai/scripted.ts';
 import { runMatch } from '../src/harness/match.ts';
 import { createSession, tickSession } from '../src/harness/session.ts';
@@ -132,5 +132,33 @@ describe('LLM General', () => {
     expect(directed(boom, { attack: 'C' })).toMatchObject({ attackAt: 'C', attackValue: boom.attackValue, regroup: true });
     expect(directed(boom, { attack: null }).attackValue).toBe(Infinity);
     expect(directed(boom, { attack: null })).not.toHaveProperty('attackAt');
+  });
+
+  it('remembers its last few taunts (filtered) and sends them with the next turn', () => {
+    const taunts = ['one', 'two', 'visit evil.com now', 'three', 'four', 'five'];
+    const heard: string[][] = [];
+    const brain: Brain = ({ youSaid }) => {
+      heard.push([...(youSaid ?? [])]);
+      const message = taunts[heard.length - 1];
+      return message ? turnOf({ tool: 'taunt', args: { message } }) : turnOf({ tool: 'wait', args: {} });
+    };
+    match(createGeneral('ai', brain, boom, { seed: 5 }), 3);
+    expect(TAUNT_MEMORY).toBe(3);
+    expect(heard[0]).toEqual([]);
+    expect(heard[1]).toEqual(['one']);
+    // The link is dropped by the chat filter, so it is never fed back to the model.
+    expect(heard[3]).toEqual(['one', 'two']);
+    expect(heard[5]).toEqual(['two', 'three', 'four']);
+    expect(heard[6]).toEqual(['three', 'four', 'five']);
+  });
+
+  it('stays deterministic with taunt memory', () => {
+    const brain: Brain = ({ tick, youSaid }) => turnOf(
+      { tool: 'taunt', args: { message: `tick ${tick}, said ${(youSaid ?? []).length}` } },
+      { tool: 'train', args: { unit: 'botnet_swarm', count: 1 } },
+    );
+    const a = match(createGeneral('ai', brain, boom, { seed: 5 }), 3);
+    const b = match(createGeneral('ai', brain, boom, { seed: 5 }), 3);
+    expect(a.log).toEqual(b.log);
   });
 });

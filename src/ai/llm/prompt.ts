@@ -1,5 +1,6 @@
 // The General's prompt (Phase 2, M2.4). The system prompt is fixed per faction: persona, rules and
-// tools never come from the opponent or from chat. The user message is only the state digest.
+// tools never come from the opponent or from chat. The user message is the state digest plus the General's
+// own last few chat lines (never the player's), so it stops repeating itself.
 import { BUILDINGS, MILLI, UNITS, type Digest, type Faction, type UnitTypeId } from '../../sim/index.ts';
 import { MAX_ORDERS_PER_TURN, toolSpecs } from './tools.ts';
 
@@ -31,8 +32,8 @@ export function systemPrompt(faction: Faction): string {
   return [
     PERSONA[faction],
     '',
-    'You are the high command in a real-time strategy match. About every 20 seconds you get a JSON digest of what your side can see '
-      + '(fog of war applies). Between your turns your base runs itself: workers follow your build plan, production follows your army mix. '
+    'You are the high command in a real-time strategy match. About every 20 seconds you get JSON: "digest" is what your side can see '
+      + '(fog of war applies) and "you_said" is your own last few chat messages. Between your turns your base runs itself: workers follow your build plan, production follows your army mix. '
       + 'Only you choose whether and where to attack; your base masses the army into waves before it goes. '
       + 'Your orders take a moment to arrive, so plan ahead.',
     '',
@@ -56,6 +57,7 @@ export function systemPrompt(faction: Faction): string {
     '- Pick one attack target and keep it until it falls or your army is spent; switching targets every turn splits your army.',
     '- Counter what you see: weight your army mix toward the units that beat the enemy units in the digest (see "Enemy units").',
     '- Talk: about once a minute, add a taunt in character to needle or bluff your opponent. One short sentence; no links.',
+    '- Never repeat or closely reword anything in "you_said": every taunt should be new and fit what is happening now.',
     '',
     'Tools:',
     ...tools,
@@ -65,6 +67,6 @@ export function systemPrompt(faction: Faction): string {
   ].join('\n');
 }
 
-export function userPrompt(digest: Digest): string {
-  return JSON.stringify(digest);
+export function userPrompt(digest: Digest, youSaid: readonly string[] = []): string {
+  return JSON.stringify({ digest, you_said: youSaid });
 }
