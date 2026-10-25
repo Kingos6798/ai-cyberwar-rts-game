@@ -19,6 +19,7 @@ import { buildCard } from './render/card.ts';
 import { createEffects, intel, updateEffects } from './render/effects.ts';
 import { createMood, createMusic, fighting, updateMood } from './render/music.ts';
 import { createGroups, groupCenter, ownIds, recallGroup, saveGroup, tapGroup } from './render/groups.ts';
+import { createSound, cueFor } from './render/sound.ts';
 import { boxSelectWhere, describeAt, describeMode, key, modeClick, pickOwn, rightClick, sameTypeWhere, type UiState } from './render/input.ts';
 import { createMobileBar, isTouchUi, touchWords } from './render/mobile.ts';
 import { createRenderer, rendererKind, viewport } from './render/renderer.ts';
@@ -84,7 +85,13 @@ let cursor: [number, number] = [0, 0];
 let dragStart: [number, number] | null = null;
 let panLast: [number, number] | null = null;
 let paused = stress === 0 && !params.has('autostart');
-if (paused) hud.showStart(() => { paused = false; });
+// Alert sounds (#4) wait for the Start click; with ?autostart, for the first click or key press.
+const sound = createSound();
+let waitingForStart = paused;
+if (paused) hud.showStart(() => { paused = false; waitingForStart = false; sound.start(); });
+hud.onAlert((text) => { const cue = cueFor(text); if (cue) sound.play(cue, performance.now()); });
+const toggleSound = () => { const on = sound.toggleMute(); hud.message(on ? '🔔 Alert sounds on' : '🔕 Alert sounds off'); return on; };
+hud.setSoundToggle(!sound.muted, toggleSound);
 const SPEEDS = [0.5, 1, 2, 4];
 let speed = 1;
 
@@ -258,8 +265,8 @@ if (touchUi) hudRoot.querySelector('#hud-guide')?.addEventListener('click', (e) 
 // Music needs a user gesture before it may play; the Start button click is the usual one.
 const music = createMusic();
 const mood = createMood();
-window.addEventListener('pointerdown', () => music.start());
-window.addEventListener('keydown', () => music.start());
+window.addEventListener('pointerdown', () => { music.start(); if (!waitingForStart) sound.start(); });
+window.addEventListener('keydown', () => { music.start(); if (!waitingForStart) sound.start(); });
 
 const held = new Set<string>();
 window.addEventListener('keyup', (e) => held.delete(e.key));
@@ -271,6 +278,7 @@ window.addEventListener('keydown', (e) => {
   if (k === '-') { speed = Math.max(0.5, speed / 2); return; }
   if (k === 't') { hud.toggleTextView(); return; }
   if (k === 'm') { hud.message(music.toggleMute() ? '♪ Music on' : '♪ Music off'); return; }
+  if (k === 'n') { hud.setSoundToggle(toggleSound(), toggleSound); return; }
   if (k === 'home') { renderer.fit(); return; }
   // Control groups (#3): Ctrl+1–9 saves the selection, 1–9 selects it, a double tap jumps the camera there.
   const digit = /^Digit([1-9])$/.exec(e.code);
