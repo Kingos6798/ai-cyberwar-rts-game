@@ -13,13 +13,15 @@ export interface SavedMatch {
   /** Opponent strategy id. */
   ai: string;
   quick: boolean;
+  /** AI difficulty; missing in saves made before difficulty levels existed (those were 'hard'). */
+  difficulty?: string;
   /** Ticks played when saved. */
   tick: number;
   /** The player's applied commands, stamped with the tick they applied on. */
   human: StampedCommand[];
 }
 
-export function snapshot(game: Game, setup: { seed: number; mapId: string; ai: string; quick: boolean }): SavedMatch {
+export function snapshot(game: Game, setup: { seed: number; mapId: string; ai: string; quick: boolean; difficulty?: string }): SavedMatch {
   return {
     gameVersion: GAME_VERSION, dataVersion: DATA_VERSION, ...setup,
     tick: game.world.tick, human: game.log.filter((c) => c.faction === 'human'),

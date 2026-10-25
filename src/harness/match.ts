@@ -15,6 +15,8 @@ export interface MatchOptions {
   /** Override the fair-play limits (e.g. for experiments); defaults come from data.ts. */
   apm?: number;
   reactionDelay?: number;
+  /** Per-side overrides (difficulty levels). */
+  pacing?: Partial<Record<Faction, { apm?: number; reactionDelay?: number }>>;
 }
 
 export interface MatchResult {

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createScriptedBot, STRATEGIES } from '../src/ai/scripted.ts';
 import { runMatch } from '../src/harness/match.ts';
-import { hashWorld, runReplay, TICK_RATE, toReplay } from '../src/sim/index.ts';
+import { createSession, tickSession } from '../src/harness/session.ts';
+import { FAIRNESS, hashWorld, runReplay, TICK_RATE, toReplay } from '../src/sim/index.ts';
+import type { Controller } from '../src/ai/controller.ts';
 
 const bots = (seed: number) => ({
   human: createScriptedBot('human', STRATEGIES.boom!, seed),
@@ -37,5 +39,24 @@ describe('match harness', () => {
     const r = runMatch({ seed: 3, maxTicks: 3000, decisionInterval: 10, reactionDelay: 3, ...bots(3) });
     expect(r.game.log.length).toBeGreaterThan(0);
     for (const c of r.game.log) expect(c.tick % 10).toBe(3);
+  });
+});
+
+describe('per-side pacing (difficulty levels slow only the AI)', () => {
+  it('a side with a longer reaction delay has its orders applied later; the other side is unaffected', () => {
+    const mover = (faction: 'human' | 'ai'): Controller => ({
+      name: 'mover',
+      decide: (v) => (v.tick === 0 ? [{ type: 'expand' }] : []),
+    });
+    const s = createSession({
+      seed: 1, controllers: { human: mover('human'), ai: mover('ai') },
+      pacing: { ai: { reactionDelay: 40, apm: 30 } },
+    });
+    tickSession(s);
+    const due = (f: string) => s.game.pending.filter((c) => c.faction === f).map((c) => c.tick);
+    expect(due('human')).toEqual([FAIRNESS.reactionDelay]);
+    expect(due('ai')).toEqual([40]);
+    expect(s.players.find((p) => p.faction === 'ai')!.pacer.apm).toBe(30);
+    expect(s.players.find((p) => p.faction === 'human')!.pacer.apm).toBe(FAIRNESS.apm);
   });
 });

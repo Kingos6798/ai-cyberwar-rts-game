@@ -32,6 +32,8 @@ export interface GameSettings {
   quick?: boolean;
   vibrate?: boolean;
   battery?: BatterySaver;
+  /** How hard the AI plays (src/ai/difficulty.ts). */
+  difficulty?: string;
 }
 const SETTINGS_KEY = 'ai-cyberwar-settings';
 
@@ -42,7 +44,7 @@ export function loadSettings(): GameSettings {
   } catch { return {}; }
 }
 
-function saveSettings(s: GameSettings): void {
+export function saveSettings(s: GameSettings): void {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* not saved: applies to this game only */ }
 }
 
@@ -104,13 +106,15 @@ export function createMobileBar(root: HTMLElement, actions: {
     <select id="set-map">${settings.maps.map((m) => opt(m.id, m.name, cur.map)).join('')}</select>
     <label for="set-ai">Opponent</label>
     <select id="set-ai">${settings.opponents.map((o) => opt(o, name(o), cur.ai)).join('')}</select>
+    <label for="set-difficulty">Difficulty</label>
+    <select id="set-difficulty">${opt('easy', 'Easy', cur.difficulty)}${opt('normal', 'Normal', cur.difficulty)}${opt('hard', 'Hard', cur.difficulty)}</select>
     <label for="set-quick">Match</label>
     <select id="set-quick">${opt('std', 'Standard', cur.quick ? 'quick' : 'std')}${opt('quick', 'Quick (richer start, faster claims)', cur.quick ? 'quick' : 'std')}</select>
     <label for="set-vibrate">Vibration</label>
     <select id="set-vibrate">${opt('on', 'On', cur.vibrate ? 'on' : 'off')}${opt('off', 'Off', cur.vibrate ? 'on' : 'off')}</select>
     <label for="set-battery">Battery saver (30 fps)</label>
     <select id="set-battery">${opt('auto', 'Auto (when low and not charging)', cur.battery)}${opt('on', 'Always', cur.battery)}${opt('off', 'Off', cur.battery)}</select>
-    <div class="settings-note">View, map, opponent and match start a new game.</div>
+    <div class="settings-note">View, map, opponent, difficulty and match start a new game.</div>
     <button type="button" class="settings-link" data-s="forget">Forget saved API key</button>
     <div class="settings-buttons"><button type="button" data-s="cancel">Cancel</button><button type="button" data-s="apply">Apply</button></div>`;
   root.appendChild(panel);
@@ -123,10 +127,10 @@ export function createMobileBar(root: HTMLElement, actions: {
   panel.querySelector<HTMLButtonElement>('[data-s="apply"]')!.onclick = () => {
     const next: Required<GameSettings> = {
       renderer: pick('set-renderer'), map: pick('set-map'), ai: pick('set-ai'), quick: pick('set-quick') === 'quick',
-      vibrate: pick('set-vibrate') === 'on', battery: pick('set-battery') as BatterySaver,
+      vibrate: pick('set-vibrate') === 'on', battery: pick('set-battery') as BatterySaver, difficulty: pick('set-difficulty'),
     };
     saveSettings(next);
-    const newGame = next.renderer !== cur.renderer || next.map !== cur.map || next.ai !== cur.ai || next.quick !== cur.quick;
+    const newGame = next.renderer !== cur.renderer || next.map !== cur.map || next.ai !== cur.ai || next.quick !== cur.quick || next.difficulty !== cur.difficulty;
     if (newGame) { settings.onNewGame(); location.reload(); return; }
     Object.assign(cur, next);
     settings.onLiveChange(next);

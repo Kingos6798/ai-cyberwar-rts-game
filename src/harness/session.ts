@@ -13,11 +13,13 @@ export interface SessionOptions {
   decisionInterval?: number;
   apm?: number;
   reactionDelay?: number;
+  /** Per-side overrides of the fair-play limits (difficulty levels slow only the AI). */
+  pacing?: Partial<Record<Faction, { apm?: number; reactionDelay?: number }>>;
 }
 
 export interface Session {
   game: Game;
-  players: { faction: Faction; controller: Controller; pacer: Pacer }[];
+  players: { faction: Faction; controller: Controller; pacer: Pacer; delay: number }[];
   interval: number;
   delay: number;
 }
@@ -25,7 +27,11 @@ export interface Session {
 export function createSession(opts: SessionOptions): Session {
   const players = (['human', 'ai'] as const)
     .filter((f) => opts.controllers[f])
-    .map((faction) => ({ faction, controller: opts.controllers[faction]!, pacer: createPacer(opts.apm) }));
+    .map((faction) => ({
+      faction, controller: opts.controllers[faction]!,
+      pacer: createPacer(opts.pacing?.[faction]?.apm ?? opts.apm),
+      delay: opts.pacing?.[faction]?.reactionDelay ?? opts.reactionDelay ?? FAIRNESS.reactionDelay,
+    }));
   return {
     game: createGame(opts.seed, opts.mapId ?? 'duel'),
     players,
@@ -43,7 +49,7 @@ export function tickSession(s: Session): void {
       for (const cmd of p.controller.decide(factionView(game.world, p.faction))) {
         if (budget-- === 0) break;
         spend(p.pacer);
-        issue(game, p.faction, cmd, s.delay);
+        issue(game, p.faction, cmd, p.delay);
       }
     }
   }

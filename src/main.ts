@@ -31,7 +31,9 @@ import { createMinimap, type MinimapCamera } from './render/minimap.ts';
 import { createGroups, groupCenter, ownIds, recallGroup, saveGroup, tapGroup } from './render/groups.ts';
 import { createSound, cueFor } from './render/sound.ts';
 import { boxSelectWhere, describeAt, describeMode, key, modeClick, pickOwn, rightClick, sameTypeWhere, type UiState } from './render/input.ts';
-import { batterySaverActive, createMobileBar, isTouchUi, loadSettings, promptResume, touchWords } from './render/mobile.ts';
+import { batterySaverActive, createMobileBar, isTouchUi, loadSettings, promptResume, saveSettings, touchWords } from './render/mobile.ts';
+import { promptSetup } from './render/setup.ts';
+import { DIFFICULTY, isDifficulty } from './ai/difficulty.ts';
 import { compatible, fastForward, snapshot, type SavedMatch } from './harness/resume.ts';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { createRenderer, rendererKind, viewport } from './render/renderer.ts';
@@ -40,9 +42,6 @@ import { setWording, word } from './render/wording.ts';
 import { applyCommand, ECONOMY, factionView, issue, MAPS, spawnUnit, START, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
 
 const params = new URLSearchParams(location.search);
-// The phone's settings menu (mobile port) saves view, map and opponent; URL options still win.
-const saved = loadSettings();
-let vibrateOn = saved.vibrate ?? true;
 // Phones close apps in the background: offer to pick up a saved match (scripted opponents only, see resume.ts).
 const SAVE_KEY = 'ai-cyberwar-save';
 const clock = (t: number) => `${Math.trunc(t / TICK_RATE / 60)}:${String(Math.trunc(t / TICK_RATE) % 60).padStart(2, '0')}`;
@@ -51,8 +50,26 @@ if (!params.has('seed') && !params.has('human') && !params.has('ai')) {
   let s: SavedMatch | null = null;
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null'); } catch { /* storage blocked */ }
   if (s && compatible(s) && OPPONENTS[s.ai] && MAPS[s.mapId]
-    && await promptResume(`${MAPS[s.mapId]!.name} against the ${s.ai} AI${s.quick ? ' (quick match)' : ''}, at ${clock(s.tick)}.`)) resume = s;
+    && await promptResume(`${MAPS[s.mapId]!.name} against the ${s.ai} AI${s.difficulty ? ` (${s.difficulty})` : ''}${s.quick ? ', quick match' : ''}, at ${clock(s.tick)}.`)) resume = s;
 }
+// Setup screen: choose opponent, difficulty, map, view and match length before the game is created.
+// Skipped when resuming, with ?autostart, or when the link already picks the opponent or seed.
+const touchUi = isTouchUi(params);
+const setupDone = !resume && !params.has('autostart') && !params.has('ai') && !params.has('seed') && !params.has('stress');
+if (setupDone) {
+  const s = loadSettings();
+  const choice = await promptSetup({
+    ai: s.ai && (OPPONENTS[s.ai] || s.ai === 'llm') ? s.ai : 'training',
+    difficulty: isDifficulty(s.difficulty) ? s.difficulty : 'normal',
+    map: s.map && MAPS[s.map] ? s.map : 'duel',
+    renderer: s.renderer ?? 'pixi',
+    quick: !!s.quick,
+  }, Object.values(MAPS).map((m) => ({ id: m.id, name: m.name })), ['training', ...Object.keys(OPPONENTS).filter((o) => o !== 'training'), 'llm'], touchUi);
+  saveSettings({ ...s, ...choice });
+}
+// The settings (setup screen or the phone menu) pick view, map, opponent and difficulty; URL options still win.
+const saved = loadSettings();
+let vibrateOn = saved.vibrate ?? true;
 const savedLlm = !params.get('ai') && !resume && saved.ai === 'llm';
 const aiParam = resume?.ai ?? params.get('ai') ?? (savedLlm ? 'llm' : saved.ai && OPPONENTS[saved.ai] ? saved.ai : 'training');
 // Quick match (mobile port): a richer start and faster claiming, for short sessions on a phone.
@@ -66,7 +83,13 @@ if (quick) {
 const blind = aiParam === 'blind';
 // Outside the sim, so Math.random is fine: the blind pick must not be guessable from the seed.
 const useLlm = aiParam === 'llm' || (blind && Math.random() < 0.5);
-const strategy = useLlm || blind ? STRATEGIES[params.get('base') ?? 'boom'] ?? STRATEGIES.boom! : OPPONENTS[aiParam] ?? TRAINING;
+const baseStrategy = useLlm || blind ? STRATEGIES[params.get('base') ?? 'boom'] ?? STRATEGIES.boom! : OPPONENTS[aiParam] ?? TRAINING;
+// Difficulty handicaps the AI only: slower reactions, fewer actions, less micro, a smaller economy.
+const difficultyId = resume ? (isDifficulty(resume.difficulty) ? resume.difficulty : 'hard')
+  : isDifficulty(params.get('difficulty')) ? params.get('difficulty') as 'easy' | 'normal' | 'hard'
+  : isDifficulty(saved.difficulty) ? saved.difficulty : 'normal';
+const level = DIFFICULTY[difficultyId];
+const strategy = level.tweak(baseStrategy);
 const seed = resume?.seed ?? Number(params.get('seed') ?? Date.now() % 100000);
 const humanBot = STRATEGIES[params.get('human') ?? ''];
 // Model names use only these characters; anything else is dropped (the name is shown in HTML).
@@ -95,11 +118,11 @@ if (useLlm && cloud) {
   client = createOllamaClient({ model, think: false, ...(ollama ? { url: ollama } : {}) });
 }
 const general = client ? createGeneral('ai', createLlmBrain(client, 'ai'), strategy, { seed }) : null;
-const aiName = blind ? 'AI (blind test)' : general ? `The Model (${model})` : `AI (${strategy.name})`;
+const aiName = blind ? 'AI (blind test)' : general ? `The Model (${model}) · ${level.label}` : `AI (${strategy.name}) · ${level.label}`;
 // ?map=duel|long picks the map (#5); unknown ids fall back to Duel.
 const mapParam = resume?.mapId ?? params.get('map') ?? saved.map ?? '';
 const mapId = MAPS[mapParam] ? mapParam : 'duel';
-const session = createSession({ seed, mapId, controllers: {
+const session = createSession({ seed, mapId, pacing: { ai: { apm: level.apm, reactionDelay: level.reactionDelay } }, controllers: {
   ai: general ?? createScriptedBot('ai', strategy, seed),
   ...(humanBot ? { human: createScriptedBot('human', humanBot, seed) } : {}),
 } });
@@ -119,7 +142,6 @@ if (stress > 0) {
 }
 
 // Mobile port: phones get touch controls, a toolbar and a compact layout (CSS: body.touch).
-const touchUi = isTouchUi(params);
 if (touchUi) {
   document.body.classList.add('touch');
   setWording(touchWords);
@@ -142,10 +164,12 @@ hud.onNarrowSelection((ids) => { ui.selected = new Set(ids); });
 let cursor: [number, number] = [0, 0];
 let dragStart: [number, number] | null = null;
 let panLast: [number, number] | null = null;
-let paused = stress === 0 && (!params.has('autostart') || resume !== null);
+let paused = stress === 0 && !setupDone && (!params.has('autostart') || resume !== null);
 // Alert sounds (#4) wait for the Start click; with ?autostart, for the first click or key press.
 const sound = createSound();
 let waitingForStart = paused && !resume;
+// The setup screen's Start click already unlocked audio.
+if (setupDone) sound.start();
 if (waitingForStart) hud.showStart(() => { paused = false; waitingForStart = false; sound.start(); });
 hud.onAlert((text) => { const cue = cueFor(text); if (cue) sound.play(cue, performance.now()); });
 const toggleSound = () => { const on = sound.toggleMute(); hud.message(on ? '🔔 Alert sounds on' : '🔕 Alert sounds off'); return on; };
@@ -377,7 +401,7 @@ const mobileBar = touchUi ? createMobileBar(hudRoot, {
 }, {
   current: {
     renderer: kind, map: mapId, ai: useLlm && cloud ? 'llm' : OPPONENTS[aiParam] ? aiParam : 'training', quick,
-    vibrate: vibrateOn, battery: saved.battery ?? 'auto',
+    vibrate: vibrateOn, battery: saved.battery ?? 'auto', difficulty: difficultyId,
   },
   maps: Object.values(MAPS).map((m) => ({ id: m.id, name: m.name })),
   opponents: [...Object.keys(OPPONENTS), 'llm'],
@@ -394,6 +418,7 @@ if (touchUi) hudRoot.querySelector('#hud-guide')?.addEventListener('click', (e) 
 
 // Music needs a user gesture before it may play; the Start button click is the usual one.
 const music = createMusic();
+if (setupDone) music.start();
 const mood = createMood();
 window.addEventListener('pointerdown', () => { music.start(); if (!waitingForStart) sound.start(); });
 window.addEventListener('keydown', () => { music.start(); if (!waitingForStart) sound.start(); });
@@ -463,7 +488,7 @@ function saveNow(): void {
   if (!canSave || discardSave) return;
   try {
     if (world.winner !== null) localStorage.removeItem(SAVE_KEY);
-    else if (world.tick > 0) localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot(game, { seed, mapId, ai: aiKey, quick })));
+    else if (world.tick > 0) localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot(game, { seed, mapId, ai: aiKey, quick, difficulty: difficultyId })));
   } catch { /* storage full or blocked: no resume */ }
 }
 document.addEventListener('visibilitychange', () => {

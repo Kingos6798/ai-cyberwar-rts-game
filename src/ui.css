@@ -360,3 +360,59 @@ body.touch #settings-panel .settings-buttons button[data-s="apply"] { background
   body:not(.touch) #hud-mode, body:not(.touch) #hud-messages { left: calc(50% + 155px); }
   body:not(.touch) #hud-intel { max-width: 260px; font-size: 11.5px; }
 }
+
+/* ---------- Setup screen (before each match) ---------- */
+#game-setup {
+  position: fixed; inset: 0; z-index: 25; display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: 14px;
+  padding: 24px; overflow: auto; text-align: center; color: var(--text);
+  background:
+    radial-gradient(ellipse at 30% 35%, rgba(74, 163, 255, 0.2), transparent 55%),
+    radial-gradient(ellipse at 72% 65%, rgba(255, 138, 61, 0.15), transparent 55%),
+    linear-gradient(rgba(130, 172, 224, 0.06) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, rgba(130, 172, 224, 0.06) 1px, transparent 1px) 0 0 / 40px 40px,
+    var(--bg);
+  animation: grid-drift 24s linear infinite;
+}
+#game-setup .eyebrow, #hud-start .eyebrow { font: 600 12px var(--font-display); letter-spacing: 0.32em; text-transform: uppercase; color: var(--dim); }
+#game-setup h1 {
+  margin: 0; font: 700 clamp(34px, 6vw, 60px)/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+  background: linear-gradient(90deg, #8cc8ff 0%, #4aa3ff 40%, #ff8a3d 62%, #ffb47a 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 22px rgba(74, 163, 255, 0.3));
+}
+#game-setup .sides { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 680px; }
+#game-setup .side { flex: 1 1 240px; text-align: left; padding: 10px 14px; border-radius: var(--r); border: 1px solid var(--line); background: rgba(10, 16, 26, 0.75); }
+#game-setup .side h2 { margin: 0 0 4px; font: 600 13px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; }
+#game-setup .side p { margin: 0; font-size: 13px; }
+#game-setup .side.you { border-color: rgba(74, 163, 255, 0.45); box-shadow: inset 3px 0 0 var(--human); } #game-setup .side.you h2 { color: var(--human); }
+#game-setup .side.them { border-color: rgba(255, 138, 61, 0.4); box-shadow: inset 3px 0 0 var(--ai); } #game-setup .side.them h2 { color: var(--ai); }
+#game-setup .setup-grid {
+  display: grid; gap: 10px; width: min(680px, 100%); padding: 14px 16px; text-align: left; box-sizing: border-box;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bottom)); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+}
+#game-setup .setup-row { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 4px 12px; }
+#game-setup .setup-label { font: 600 11px var(--font-display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+#game-setup .setup-note { grid-column: 2; margin: 0; font-size: 12.5px; color: var(--dim); min-height: 1.2em; }
+#game-setup .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#game-setup .chips button {
+  min-height: 34px; padding: 0 14px; border-radius: 999px; cursor: pointer; background: rgba(255, 255, 255, 0.04); color: var(--text);
+  border: 1px solid var(--line-strong); font: 600 13px var(--font-display); letter-spacing: 0.03em; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+#game-setup .chips button:hover { border-color: var(--human); }
+#game-setup .chips button[aria-checked="true"] { background: linear-gradient(180deg, #2c6fbf, #1d4f8c); border-color: #7cc2ff; color: #fff; box-shadow: 0 0 14px var(--human-glow); }
+#game-setup .chips[data-group="ai"] button[data-v="brutal"][aria-checked="true"],
+#game-setup .chips[data-group="difficulty"] button[data-v="hard"][aria-checked="true"] { background: linear-gradient(180deg, #a85020, #7a3510); border-color: #ffb47a; box-shadow: 0 0 14px rgba(255, 138, 61, 0.4); }
+#game-setup .how { max-width: 640px; margin: 0; font-size: 14px; } #game-setup .how b { color: var(--warn); }
+#game-setup [data-start] { min-height: 48px; padding: 0 48px; font-size: 18px; letter-spacing: 0.14em; text-transform: uppercase; border-radius: 999px; }
+#game-setup .hint { font-size: 12px; color: var(--dim); }
+
+@media (max-width: 700px), (max-height: 520px) {
+  #game-setup { gap: 8px; padding: 12px max(12px, env(safe-area-inset-left)); }
+  #game-setup h1 { font-size: 28px; } #game-setup .eyebrow { display: none; }
+  #game-setup .sides { display: none; }
+  #game-setup .setup-grid { padding: 10px 12px; gap: 7px; }
+  #game-setup .setup-row { grid-template-columns: 78px 1fr; }
+  #game-setup .chips button { min-height: 32px; padding: 0 11px; font-size: 12px; }
+  #game-setup .setup-note { font-size: 11.5px; }
+  #game-setup .how { display: none; }
+  #game-setup [data-start] { min-height: 42px; font-size: 16px; }
+}
