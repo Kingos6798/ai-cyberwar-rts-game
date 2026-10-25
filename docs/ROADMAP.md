@@ -145,7 +145,7 @@ Timeboxes assume ~8 hrs/week. Overrunning a timebox by 50% triggers an owner rev
 - ✅ M2.3b Latency in ticks: an LLM decision applies a fixed or measured number of ticks after the request, never instantly. Headless sims replay the measured latency distribution, so batch results match real-time play. Synchronous brains draw a seeded latency from `latency` samples (default 2 s); async brains apply at the first decision after the reply arrives and log that latency (`measuredLatencies()`); no reply within 10 s counts as late.
 - M2.4 `AICommanderClient` provider switch: Ollama local / cloud via proxy.
   - ✅ `LlmClient` interface + Ollama client (`src/ai/llm/client.ts`, structured output via the turn schema), fixed per-faction prompt (`src/ai/llm/prompt.ts`), `createLlmBrain()`, and `npm run llm-turn` to try one turn against a real model.
-  - Cloud via local proxy: after the Gate 2 owner decision on cloud scope.
+  - ✅ Cloud (D-020): OpenAI-compatible client (`src/ai/llm/openai.ts`). In the browser, players enter their own key (`?ai=llm&provider=openai`); headless runs read `OPENAI_API_KEY` (`--provider openai`). Default model and cost per match: to measure once a key is available.
 - M2.5 In-game comms: General's taunts/bluffs in a chat panel.
   - ✅ Play the LLM General in the browser: `?ai=llm&model=qwen3:8b` (Ollama; offline means its base plays on as the scripted bot). Blind test for Gate 2: `?ai=blind` (LLM or scripted boom at random, chat hidden, revealed after the match).
   - ✅ Chat panel (`src/render/chat.ts`, text only, never HTML) and output filter (`src/ai/llm/filter.ts`: control characters, links and contact details, a short blocklist, length cap). The prompt asks for about one taunt a minute.

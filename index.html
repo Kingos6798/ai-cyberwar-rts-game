@@ -61,6 +61,13 @@
       #hud-minimap { right: 8px; bottom: 52px; padding: 0; cursor: crosshair; }
       #hud-intel { right: 8px; bottom: 240px; max-width: 320px; font-size: 13px; }
       #hud-chat { right: 8px; top: 56px; max-width: 360px; font-size: 13px; } #hud-chat b { color: var(--ai); }
+      #key-prompt { position: fixed; inset: 0; background: #000c; display: flex; align-items: center; justify-content: center; z-index: 10; padding: 16px; }
+      #key-prompt form { background: var(--panel); border: 1px solid #2c333d; border-radius: 8px; padding: 20px 24px; max-width: 520px; display: flex; flex-direction: column; gap: 10px; }
+      #key-prompt h2 { margin: 0; } #key-prompt p { margin: 0; color: var(--dim); }
+      #key-prompt label { display: flex; flex-direction: column; gap: 4px; } #key-prompt label.remember { flex-direction: row; align-items: center; gap: 6px; }
+      #key-prompt input:not([type=checkbox]) { font: inherit; padding: 6px 8px; background: #0b0e12; color: var(--text); border: 1px solid #3a4250; border-radius: 4px; }
+      #key-prompt .actions { display: flex; gap: 8px; flex-wrap: wrap; } #key-prompt button { font: inherit; padding: 6px 14px; border-radius: 4px; border: 1px solid #3a4250; background: #1f2630; color: var(--text); cursor: pointer; }
+      #key-prompt button[type=submit] { background: var(--human); color: #001; border: 0; font-weight: 600; }
       #hud-banner { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); background: var(--panel);
         padding: 20px 32px; border-radius: 8px; font-size: 24px; text-align: center; pointer-events: auto; }
       #hud-banner.has-summary { font-size: 14px; text-align: left; top: 50%; max-height: 92vh; overflow: auto; }

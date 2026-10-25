@@ -11,7 +11,8 @@
 // baseline B absorbs faction balance; the LLM must win at least B + 15 points.
 import { writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { createLlmBrain, createOllamaClient } from '../src/ai/llm/client.ts';
+import { createLlmBrain } from '../src/ai/llm/client.ts';
+import { clientFromArgs } from './llm-provider.ts';
 import { createControl } from '../src/ai/llm/control.ts';
 import { createGeneral, type TurnLog } from '../src/ai/llm/general.ts';
 import { matchReport, type MatchRecord } from '../src/ai/llm/report.ts';
@@ -23,6 +24,7 @@ import { TICK_RATE } from '../src/sim/index.ts';
 
 const { values } = parseArgs({
   options: {
+    provider: { type: 'string', default: 'ollama' },
     model: { type: 'string', default: 'qwen3:8b' },
     url: { type: 'string', default: process.env.OLLAMA_URL ?? 'http://localhost:11434' },
     matches: { type: 'string', default: '3' },
@@ -50,7 +52,7 @@ if (!base || !opponents) {
   process.exit(2);
 }
 
-const client = createOllamaClient({ model: values.model, url: values.url, ...(values['no-think'] ? { think: false } : {}) });
+const client = clientFromArgs(values);
 const n = Number(values.matches);
 const maxTicks = Number(values.minutes) * 60 * TICK_RATE;
 

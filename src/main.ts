@@ -1,15 +1,19 @@
 // Browser entry: human plays through the UI; the AI faction is a scripted bot or the LLM General.
 // URL options: ?ai=training|brutal|rush|boom|turtle&seed=123&stress=300 (stress spawns N fighting units to check frame rate)
 // LLM General: ?ai=llm&model=qwen3:8b[&base=boom][&ollama=http://localhost:11434] (needs `ollama serve`; if the
-// model is unreachable the General's base plays on as the scripted bot). Blind test (Gate 2): ?ai=blind picks
+// model is unreachable the General's base plays on as the scripted bot). Cloud (D-020): ?ai=llm&provider=openai
+// [&model=...] asks for the player's own OpenAI key once per session; &newkey forgets a saved key. Blind test (Gate 2): ?ai=blind picks
 // the LLM General or scripted boom at random, hides which and hides chat, and reveals it after the match.
 // &renderer=pixi|three|iso picks the view (M4.0 renderer spike, D-017); pixi (top-down 2D) is the default.
 // &map=duel|long picks the map (Duel is the default; Long Haul is longer, with two fiber routes).
 // Testing: &human=rush|boom|turtle lets a bot play your side (to watch or screenshot), &autostart skips the start screen,
 // &skip=60 fast-forwards 60 seconds before the first frame.
-import { createLlmBrain, createOllamaClient } from './ai/llm/client.ts';
+import { createLlmBrain, createOllamaClient, type LlmClient } from './ai/llm/client.ts';
 import { filterChat } from './ai/llm/filter.ts';
 import { createGeneral } from './ai/llm/general.ts';
+import { forgetKey, loadKey, saveKey, type KeyStorage } from './ai/llm/keystore.ts';
+import { createOpenAiClient } from './ai/llm/openai.ts';
+import { promptForKey } from './render/keyprompt.ts';
 import { createScriptedBot, OPPONENTS, STRATEGIES, TRAINING } from './ai/scripted.ts';
 import { createChatPanel } from './render/chat.ts';
 import { createSession, tickSession } from './harness/session.ts';
@@ -39,12 +43,31 @@ const useLlm = aiParam === 'llm' || (blind && Math.random() < 0.5);
 const strategy = useLlm || blind ? STRATEGIES[params.get('base') ?? 'boom'] ?? STRATEGIES.boom! : OPPONENTS[aiParam] ?? TRAINING;
 const seed = Number(params.get('seed') ?? Date.now() % 100000);
 const humanBot = STRATEGIES[params.get('human') ?? ''];
-// Ollama model names use only these characters; anything else is dropped (the name is shown in HTML).
-const model = (params.get('model') ?? 'qwen3:8b').replace(/[^\w.:/-]/g, '');
+// Model names use only these characters; anything else is dropped (the name is shown in HTML).
+const cloud = params.get('provider') === 'openai';
+let model = (params.get('model') ?? (cloud ? '' : 'qwen3:8b')).replace(/[^\w.:/-]/g, '');
 const ollama = params.get('ollama');
-const general = useLlm
-  ? createGeneral('ai', createLlmBrain(createOllamaClient({ model, think: false, ...(ollama ? { url: ollama } : {}) }), 'ai'), strategy, { seed })
-  : null;
+let client: LlmClient | null = null;
+if (useLlm && cloud) {
+  // D-020: the player's own key, entered here, kept for the session (or on this device if they ask).
+  const store = (s: () => Storage): KeyStorage => ({
+    getItem: (k) => s().getItem(k), setItem: (k, v) => s().setItem(k, v), removeItem: (k) => s().removeItem(k),
+  });
+  const [session, local] = [store(() => sessionStorage), store(() => localStorage)];
+  if (params.has('newkey')) forgetKey(session, local);
+  let apiKey = loadKey(session, local);
+  if (!apiKey || !model) {
+    const answer = await promptForKey(model, !apiKey);
+    if (answer) {
+      model = answer.model;
+      if (!apiKey) { saveKey(answer.key, answer.remember, session, local); apiKey = answer.key; }
+    }
+  }
+  if (apiKey && model) client = createOpenAiClient({ model, apiKey });
+} else if (useLlm) {
+  client = createOllamaClient({ model, think: false, ...(ollama ? { url: ollama } : {}) });
+}
+const general = client ? createGeneral('ai', createLlmBrain(client, 'ai'), strategy, { seed }) : null;
 const aiName = blind ? 'AI (blind test)' : general ? `The Model (${model})` : `AI (${strategy.name})`;
 // ?map=duel|long picks the map (#5); unknown ids fall back to Duel.
 const mapParam = params.get('map') ?? saved.map ?? '';

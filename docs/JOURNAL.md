@@ -9,6 +9,13 @@ The story of building this game, newest first. Wins, failures, surprises, and wh
 - Human rush vs AI turtle stayed at 2-21% in every sane variant, and the turtle bot folds to pressure as either faction. Those look like bot habits, not faction stats. Proposal 0003 has the tables; nothing changes until the owner plays it.
 - Lesson: re-measure before fixing an issue that's a few days old. Half of #32's numbers had already moved.
 
+## 2026-10-25 — A cloud General, bring your own key
+
+- Owner decision (D-020): players without a GPU can play the LLM General through an OpenAI-compatible API, using their own key. The client is about 50 lines. The interesting part is everything around the key: kept for the session unless you ask to remember it, sent only in a header, never in a URL, log or error message, and errors are scrubbed in case a provider echoes the key back.
+- One deliberate limit: the browser only talks to api.openai.com. If a link could set the API address, a shared link could quietly send someone's saved key to a stranger's server.
+- Surprise: a wrong key in the browser doesn't show up as a 401. OpenAI's error replies have no CORS header, so the browser reports a bare "Failed to fetch". The General now says what to check and how to re-enter the key.
+- Not yet run against a real model: there's no key yet. Default model and cost per match get measured with the Gate 2 head-to-head when there is.
+
 ## 2026-10-24 — Five words that cost 60 points
 
 - After the General learned to mass its army, it lost to the control (33% vs 58%). Guessing didn't help: a prompt making the enemy core its default target changed where it attacked, but not how often it won.
