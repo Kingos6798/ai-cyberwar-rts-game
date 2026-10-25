@@ -17,3 +17,4 @@ Thumbs.db
 
 # Research export: owner decides before going public whether it belongs in the repo
 Architecting a Cyber-Themed LLM RTS.pdf
+*.apk
