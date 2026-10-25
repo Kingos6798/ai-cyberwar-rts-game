@@ -3,7 +3,8 @@
 // validation result, planned commands and latency.
 // Usage: npm run llm-turn -- --model qwen3:8b [--url http://localhost:11434] [--minutes 4] [--faction ai] [--seed 3] [--no-think] [--digest]
 import { parseArgs } from 'node:util';
-import { createLlmBrain, createOllamaClient } from '../src/ai/llm/client.ts';
+import { createLlmBrain } from '../src/ai/llm/client.ts';
+import { clientFromArgs } from './llm-provider.ts';
 import { planTurn } from '../src/ai/llm/plan.ts';
 import { systemPrompt } from '../src/ai/llm/prompt.ts';
 import { parseTurn } from '../src/ai/llm/tools.ts';
@@ -13,6 +14,7 @@ import { digestView, factionView, TICK_RATE, type Faction } from '../src/sim/ind
 
 const { values } = parseArgs({
   options: {
+    provider: { type: 'string', default: 'ollama' },
     model: { type: 'string', default: 'qwen3:8b' },
     url: { type: 'string', default: process.env.OLLAMA_URL ?? 'http://localhost:11434' },
     minutes: { type: 'string', default: '4' },
@@ -35,7 +37,7 @@ const { game } = runMatch({
 });
 const view = factionView(game.world, faction);
 const digest = digestView(view);
-const client = createOllamaClient({ model: values.model, url: values.url, ...(values['no-think'] ? { think: false } : {}) });
+const client = clientFromArgs(values);
 const brain = createLlmBrain(client, faction, { timeoutMs: 120_000 });
 
 console.log(`model ${client.name}, ${faction} at ${digest.t}; system prompt ${systemPrompt(faction).length} chars, digest ${JSON.stringify(digest).length} chars`);

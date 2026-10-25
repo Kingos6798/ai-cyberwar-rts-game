@@ -1,6 +1,6 @@
 // LLM providers for the General (Phase 2, M2.4). One small interface so the General never cares which
-// model answers. Ollama runs locally; a cloud provider will sit behind a local proxy so API keys never
-// reach browser code.
+// model answers. Ollama runs locally; the cloud provider (OpenAI-compatible, the player's own key; D-020)
+// lives in openai.ts.
 import type { Faction } from '../../sim/index.ts';
 import type { Brain } from './general.ts';
 import { systemPrompt, userPrompt } from './prompt.ts';
