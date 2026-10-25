@@ -13,7 +13,13 @@ This fork adds a phone version of the game: touch controls, a phone layout, an i
 | One-finger drag | Pan the map (draws a selection box when **⬚ Box** is on) |
 | Two fingers | Pan and pinch-zoom |
 
-Toolbar on the right: pause, speed, ⬚ Box select, ✕ deselect, ⤢ show the whole map. Tap the "Getting started" checklist to fold it away.
+Drag from a selected unit to a target to order it there (a dashed line shows where).
+
+Toolbar on the right: pause, speed, ⬚ Box select, 👷 next idle engineer, ⚔ select army, ✕ deselect, ⤢ show the whole map, ⚙ settings. Tap the "Getting started" checklist to fold it away. Tap an alert ("▸ show") to jump to it; the minimap under the toolbar centers the camera where you tap.
+
+Settings (⚙): view (top-down, isometric, 3D), map, opponent (including the cloud AI General with your own API key), standard or quick match, vibration, and battery saver (30 fps). The app pauses itself when you leave it and offers to resume a match after Android closes it (scripted opponents only: see `src/harness/resume.ts`).
+
+The playable web link can't reach the cloud General (the host blocks outside connections); the APK can.
 
 ## Building the Android app (APK)
 
