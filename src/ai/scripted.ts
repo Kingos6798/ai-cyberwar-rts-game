@@ -42,12 +42,17 @@ export interface Strategy {
   regroup?: boolean;
   /** Attack this sector instead of the enemy core (the LLM General's target; its waves still mass first). */
   attackAt?: SectorId;
+  /**
+   * Once every site is claimed, spare workers help build or wait by the core, and no more workers are
+   * trained than there is work for (#33). Off for the gentle training opponent, which must not get stronger.
+   */
+  spareWorkers?: boolean;
 }
 
 export const STRATEGIES: Record<string, Strategy> = {
-  rush: { name: 'rush', workers: 4, racks: 0, barricades: 0, defenses: 0, mix: { fast: 2, ranged: 1 }, attackValue: 250, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true },
-  boom: { name: 'boom', workers: 8, racks: 2, barricades: 0, defenses: 1, mix: { fast: 1, ranged: 1, tank: 1 }, attackValue: 700, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true },
-  turtle: { name: 'turtle', workers: 6, racks: 1, barricades: 3, defenses: 3, mix: { ranged: 2, tank: 2, fast: 1 }, attackValue: 900, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true },
+  rush: { name: 'rush', workers: 4, racks: 0, barricades: 0, defenses: 0, mix: { fast: 2, ranged: 1 }, attackValue: 250, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true, spareWorkers: true },
+  boom: { name: 'boom', workers: 8, racks: 2, barricades: 0, defenses: 1, mix: { fast: 1, ranged: 1, tank: 1 }, attackValue: 700, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true, spareWorkers: true },
+  turtle: { name: 'turtle', workers: 6, racks: 1, barricades: 3, defenses: 3, mix: { ranged: 2, tank: 2, fast: 1 }, attackValue: 900, focusFire: true, counterBuild: true, usePlug: true, guardOutposts: true, spareWorkers: true },
 };
 
 /** Gentle opponent for learning the game: slow economy, no micro, attacks late. Not part of balance runs. */
@@ -64,7 +69,7 @@ export const TRAINING: Strategy = {
  */
 export const BRUTAL: Strategy = {
   name: 'brutal', workers: 5, racks: 3, barricades: 0, defenses: 0, mix: { fast: 3, ranged: 1, tank: 1 }, attackValue: 600,
-  focusFire: true, counterBuild: true, usePlug: true, spareRacks: 4, regroup: true, guardOutposts: true,
+  focusFire: true, counterBuild: true, usePlug: true, spareRacks: 4, regroup: true, guardOutposts: true, spareWorkers: true,
 };
 
 /** Every opponent a player can pick (`?ai=` in the browser, `--ai` in the sim). */
@@ -218,24 +223,34 @@ export function createScriptedBot(faction: Faction, initial: Strategy, seed = 1)
         }
       }
 
-      // Under pressure, keep at least a minimal workforce so the economy can recover after a raid.
-      const wantWorkers = underPressure ? Math.min(2, strategy.workers) : strategy.workers;
-      if (workers.length < wantWorkers && core.queue.length === 0 && !pending(core.id)
-        && v.data >= UNITS[WORKER[faction]].cost) {
-        order({ type: 'train', building: core.id, unit: WORKER[faction] }, [core.id], UNITS[WORKER[faction]].cost);
-      }
-
-      // 5. Jobs for idle workers, away from guarded sites.
+      // Sites with enemy guards nearby (seen now or recently): workers stay away from them.
       const guards = [...v.enemyUnits.filter((e) => e.role !== 'worker'), ...v.enemyBuildings.filter((b) => Object.values(DEFENSE).includes(b.type))];
       for (const s of v.sites) {
         if (guards.some((g) => dist2(g.x, g.y, s.x, s.y) < GUARD.range ** 2)) guardedUntil.set(s.id, v.tick + GUARD.memoryTicks);
       }
       const guarded = new Set([...guardedUntil].filter(([, until]) => until >= v.tick).map(([id]) => id));
+
+      // Under pressure, keep at least a minimal workforce so the economy can recover after a raid.
+      // Past that, train workers only while there is work for them: once every site is claimed, idle
+      // workers just cost Data and Power (#33).
+      const wantWorkers = underPressure ? Math.min(2, strategy.workers) : strategy.workers;
+      const idleWorkers = workers.filter((w) => w.order === 'idle' && !busy.has(w.id) && !pending(w.id)).length;
+      const work = !strategy.spareWorkers || idleWorkers === 0 ? Infinity : openWork(v, faction, core, guarded);
+      if (workers.length < wantWorkers && idleWorkers < work && core.queue.length === 0 && !pending(core.id)
+        && v.data >= UNITS[WORKER[faction]].cost) {
+        order({ type: 'train', building: core.id, unit: WORKER[faction] }, [core.id], UNITS[WORKER[faction]].cost);
+      }
+
+      // 5. Jobs for idle workers, away from guarded sites. Spare workers help build, or wait near the core.
       for (const w of workers) {
-        if (w.order !== 'idle' || busy.has(w.id)) continue;
+        if (w.order !== 'idle' || busy.has(w.id) || (strategy.spareWorkers && pending(w.id))) continue;
         const wantRelay = SIGNAL.enabled && faction === 'ai' && value(army) >= attackValue;
-        const job = nextJob(v, faction, strategy, core, prod, busy, rng, towardCenter, wantRelay, guarded);
-        if (!job) break;
+        const job = nextJob(v, faction, strategy, core, prod, busy, rng, towardCenter, wantRelay, guarded)
+          ?? (strategy.spareWorkers ? spareJob(v, w, core, towardCenter) : null);
+        if (!job) {
+          if (strategy.spareWorkers) continue;
+          break;
+        }
         busy.set(w.id, job.key);
         if ('units' in job.cmd) job.cmd.units = [w.id];
         order(job.cmd, [w.id], job.cmd.type === 'build' ? BUILDINGS[job.cmd.building].cost : 0);
@@ -383,6 +398,35 @@ function nextJob(
     return { key: 'new:wall', cmd: { type: 'build', units: [], building: 'barricade', x, y } };
   }
   return null;
+}
+
+/** How far from the core a spare worker may idle before it is called back. */
+const HOME_TILES = 6;
+
+/**
+ * Work for a worker once every main job is taken (#33): help finish the nearest unbuilt building (more
+ * builders build faster), else wait just behind the core instead of out in the open.
+ */
+function spareJob(v: FactionView, w: UnitView, core: { x: number; y: number }, toward: number): Job | null {
+  const unbuilt = v.buildings.filter((b) => !b.built)
+    .sort((a, b) => dist2(a.x, a.y, w.x, w.y) - dist2(b.x, b.y, w.x, w.y) || a.id - b.id)[0];
+  if (unbuilt) return { key: `help:${unbuilt.id}:${w.id}`, cmd: { type: 'construct', units: [], building: unbuilt.id } };
+  if (dist2(w.x, w.y, core.x, core.y) <= (HOME_TILES * TILE) ** 2) return null;
+  return { key: `home:${w.id}`, cmd: { type: 'move', units: [], x: core.x - toward * 2 * TILE, y: core.y } };
+}
+
+/** Jobs a new worker could take: claimable sites on our half, dark links between friendly ends, unbuilt buildings. */
+function openWork(v: FactionView, faction: Faction, core: { x: number; y: number }, guarded: Set<string>): number {
+  const enemyCore = v.sites.find((x) => x.kind === 'core' && !(x.x === core.x && x.y === core.y));
+  const siteById = new Map(v.sites.map((x) => [x.id, x]));
+  const friendly = (id: string) => {
+    const s = siteById.get(id);
+    return !!s && (s.owner === faction || (s.kind === 'router' && s.owner === null) || (s.kind === 'core' && s.x === core.x && s.y === core.y));
+  };
+  const sites = v.sites.filter((x) => x.kind !== 'core' && x.owner !== faction && !guarded.has(x.id)
+    && (!enemyCore || dist2(x.x, x.y, core.x, core.y) <= dist2(x.x, x.y, enemyCore.x, enemyCore.y))).length;
+  const links = v.links.filter((l) => !l.mine && friendly(l.a) && friendly(l.b)).length;
+  return sites + links + v.buildings.filter((b) => !b.built).length;
 }
 
 /**
