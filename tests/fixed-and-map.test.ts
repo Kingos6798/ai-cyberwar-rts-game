@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DUEL_MAP, isqrt, sectorCenter, sectorOf, stepToward, TILE } from '../src/sim/index.ts';
+import { createGame, DUEL_MAP, isqrt, MAPS, sectorCenter, sectorOf, stepToward, TILE, type GameMap } from '../src/sim/index.ts';
 
 describe('integer math', () => {
   it('isqrt is exact', () => {
@@ -16,7 +16,8 @@ describe('integer math', () => {
   });
 });
 
-describe('duel map', () => {
+// Every map gets the duel map's fairness checks (#5: a second map).
+describe.each(Object.values(MAPS).map((m) => [m.id, m] as [string, GameMap]))('map %s', (_, DUEL_MAP) => {
   it('is point-symmetric: every site has a mirror of the same kind and rate', () => {
     for (const s of DUEL_MAP.sites) {
       const m = DUEL_MAP.sites.find((o) => o.x === DUEL_MAP.width - s.x && o.y === DUEL_MAP.height - s.y);
@@ -53,6 +54,35 @@ describe('duel map', () => {
     }
   });
 
+  it('is well formed: unique ids, links between real sites, one core each, everything on the map and reachable by fiber', () => {
+    const ids = DUEL_MAP.sites.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const l of DUEL_MAP.links) expect(ids.includes(l.a) && ids.includes(l.b), `${l.a}-${l.b}`).toBe(true);
+    expect(DUEL_MAP.sites.filter((s) => s.kind === 'core').map((s) => s.owner).sort()).toEqual(['ai', 'human']);
+    for (const s of DUEL_MAP.sites) expect(s.x > 0 && s.x < DUEL_MAP.width && s.y > 0 && s.y < DUEL_MAP.height, s.id).toBe(true);
+    // Substations feed power by being held, not by fiber; every other site joins the network.
+    const reached = new Set(['h_core']);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const l of DUEL_MAP.links) {
+        for (const [a, b] of [[l.a, l.b], [l.b, l.a]] as const) if (reached.has(a) && !reached.has(b)) { reached.add(b); grew = true; }
+      }
+    }
+    for (const s of DUEL_MAP.sites) if (s.kind !== 'substation') expect(reached.has(s.id), s.id).toBe(true);
+    expect(() => createGame(1, DUEL_MAP.id)).not.toThrow();
+  });
+});
+
+describe('map list', () => {
+  it('has the duel map and Long Haul, a longer map with two fiber routes and no center router', () => {
+    expect(Object.keys(MAPS)).toEqual(['duel', 'long']);
+    const long = MAPS.long!;
+    expect(long.width).toBeGreaterThan(DUEL_MAP.width);
+    expect(long.sites.some((s) => s.x === long.width / 2 && s.y === long.height / 2)).toBe(false);
+  });
+});
+
+describe('duel map', () => {
   it('sectors name the 3x3 grid', () => {
     expect(sectorOf(DUEL_MAP, 0, 0)).toBe('NW');
     expect(sectorOf(DUEL_MAP, 24 * TILE, 16 * TILE)).toBe('C');
