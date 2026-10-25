@@ -32,12 +32,12 @@ export const POWER_FULL_ALERT = '⚡ Power full: new units will wait. Claim subs
 export function createHud(root: HTMLElement, aiName: string): Hud {
   root.innerHTML = `
     <div id="hud-top" class="hud-panel">
-      <span class="t-time" id="t-time"></span>
+      <span class="t-time"><i class="ico"></i><span id="t-time"></span></span>
       <span class="t-state" id="t-state"></span>
-      <span class="t-data" title="Data: spend on units and buildings">Data <b id="t-data"></b> <span id="t-inc"></span></span>
-      <span class="t-power" title="Power is your unit limit: every unit and building draws Power; your NOC and each substation you hold supply it. When it's full, new units wait.">Power <span id="t-power"></span></span>
-      <span class="t-compute" title="Compute: training speed, shared by all your buildings that are training. Server Racks add 5; extra SOCs add nothing.">Compute <b id="t-compute"></b></span>
-      <span class="t-plug" title="Pull the Plug: black out a zone, freezing AI units and unpowering buildings">Plug <span id="t-plug"></span></span>
+      <span class="t-data" title="Data: spend on units and buildings"><i class="ico"></i><i class="lbl">Data</i> <b id="t-data"></b> <span class="inc" id="t-inc"></span></span>
+      <span class="t-power" title="Power is your unit limit: every unit and building draws Power; your NOC and each substation you hold supply it. When it's full, new units wait."><i class="ico"></i><i class="lbl">Power</i> <span id="t-power"></span></span>
+      <span class="t-compute" title="Compute: training speed, shared by all your buildings that are training. Server Racks add 5; extra SOCs add nothing."><i class="ico"></i><i class="lbl">Compute</i> <b id="t-compute"></b></span>
+      <span class="t-plug" title="Pull the Plug: black out a zone, freezing AI units and unpowering buildings"><i class="ico"></i><i class="lbl">Plug</i> <span id="t-plug"></span></span>
       <span class="dim t-meta" id="t-meta"></span>
       <button type="button" id="t-sound" title="Alert sounds on/off (N)"></button>
     </div>
@@ -125,18 +125,17 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
   return {
     update(world, v, selected, modeText, speed, paused, fps) {
       const secs = Math.trunc(world.tick / TICK_RATE);
-      const plug = v.plugReadyIn === 0 ? '<b class="ready">READY</b>' : `${Math.ceil((v.plugReadyIn ?? 0) / TICK_RATE)}s`;
       // The bar's layout is fixed; only values that changed are written, so nothing shifts or repaints
       // needlessly. The fps reading refreshes twice a second.
       const now0 = performance.now();
       if (now0 - fpsAt > 500) { fpsAt = now0; fpsShown = fps; }
-      setHtml('t-time', `⏱ ${Math.trunc(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
-      setHtml('t-state', `${paused ? '<b>PAUSED</b> ' : ''}${speed !== 1 ? `×${speed}` : ''}`);
+      setHtml('t-time', `${Math.trunc(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
+      setHtml('t-state', `${paused ? 'PAUSED' : ''}${paused && speed !== 1 ? ' ' : ''}${speed !== 1 ? `×${speed}` : ''}`);
       setHtml('t-data', String(Math.trunc(v.data / MILLI)));
-      setHtml('t-inc', `(+${((v.income * TICK_RATE) / MILLI).toFixed(1)}/s)`);
+      setHtml('t-inc', `+${((v.income * TICK_RATE) / MILLI).toFixed(1)}/s`);
       setHtml('t-power', `<b${powerHeadroom(v) === 0 ? ' class="warn"' : ''}>${v.powerUsed}/${v.powerCap}${powerHeadroom(v) === 0 ? ' FULL' : ''}</b>`);
       setHtml('t-compute', String(v.compute));
-      setHtml('t-plug', plug);
+      setHtml('t-plug', `<b${v.plugReadyIn === 0 ? ' class="ready"' : ''}>${v.plugReadyIn === 0 ? 'READY' : `${Math.ceil((v.plugReadyIn ?? 0) / TICK_RATE)}s`}</b>`);
       setHtml('t-meta', `vs ${aiName} · ${fpsShown} fps`);
       $('hud-mode').textContent = modeText;
       $('hud-mode').hidden = !modeText;
@@ -169,8 +168,8 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
       if (world.winner && !summaryShown) {
         $('hud-banner').hidden = false;
         $('hud-banner').innerHTML = world.winner === 'human'
-          ? 'The network holds. <b>Humans win.</b><br><small>Reload to play again.</small>'
-          : 'The Model has taken the network. <b>AI wins.</b><br><small>Reload to play again.</small>';
+          ? '<span style="color:var(--human)">The network holds.</span> <b>Humans win.</b><br><small>Reload to play again.</small>'
+          : '<span style="color:var(--ai)">The Model has taken the network.</span> <b>AI wins.</b><br><small>Reload to play again.</small>';
       }
     },
     showSummary(html, attach) {
@@ -195,8 +194,9 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
       for (const b of buttons) {
         const btn = document.createElement('button');
         btn.type = 'button';
+        btn.dataset.kind = b.id.startsWith('train:') ? 'train' : b.id.startsWith('build:') ? 'build' : b.id === 'plug' ? 'plug' : b.id.startsWith('group:') ? 'group' : 'order';
         btn.innerHTML = `<span class="label">${b.label}</span>`
-          + (b.cost ? `<span class="cost">${Math.trunc(b.cost / MILLI)} Data</span>` : '')
+          + (b.cost ? `<span class="cost">${Math.trunc(b.cost / MILLI)}</span>` : '')
           + (b.key ? `<kbd>${b.key}</kbd>` : '');
         btn.title = b.disabled ? `${b.tip}
 
@@ -217,12 +217,15 @@ export function createHud(root: HTMLElement, aiName: string): Hud {
     showStart(onStart) {
       const el = $('hud-start');
       el.hidden = false;
-      el.innerHTML = word(`<h1>AI Cyberwar RTS</h1>
-        <p>You are the <b style="color:var(--human)">human ops team</b> (blue, left). The <b style="color:var(--ai)">AI</b> (orange) starts on the right, hidden by fog.</p>
-        <p><b>Goal:</b> destroy the AI's Primary Cluster before it destroys your NOC.</p>
-        <p><b>How:</b> claim Data Sources, connect them to your base with fiber, build a SOC, train an army, attack.
-        The checklist on the left walks you through it. Hover anything on the map to learn what it is.</p>
-        <button type="button" id="start-btn">Start</button>`);
+      el.innerHTML = word(`<div class="eyebrow">Real-time strategy · Metro region network</div>
+        <h1>AI Cyberwar</h1>
+        <div class="sides">
+          <div class="side you"><h2>You · Human ops team</h2><p>Engineers, security operators and vehicles. Blue, on the left.</p></div>
+          <div class="side them"><h2>Enemy · The Model</h2><p>A rogue AI driving hijacked machines. Orange, on the right, hidden by fog.</p></div>
+        </div>
+        <p class="how"><b>Goal:</b> destroy the AI's Primary Cluster before it destroys your NOC. Claim Data Sources, connect them to your base with fiber, build a SOC, train an army, attack.</p>
+        <button type="button" id="start-btn" class="btn primary">Start</button>
+        <div class="hint">The checklist on the left walks you through it. Hover anything on the map to learn what it is.</div>`);
       el.querySelector('#start-btn')!.addEventListener('click', () => { el.hidden = true; onStart(); });
     },
     alert(text, where) {

@@ -29,6 +29,7 @@
     "@capacitor/cli": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@capacitor/haptics": "^8.0.2",
+    "@fontsource/chakra-petch": "^5.3.0",
     "pixi.js": "^8.22.0",
     "three": "0.186.1"
   },

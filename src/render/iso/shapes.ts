@@ -39,6 +39,6 @@ export function shadow(g: Graphics, x: number, y: number, r: number): void {
 /** Upright bar centered at projected (px, py); hp/max fills it. */
 export function bar(g: Graphics, px: number, py: number, w: number, hp: number, max: number, color?: number): void {
   const f = Math.max(0, Math.min(1, hp / max));
-  g.rect(px - w / 2 - 30, py - 30, w + 60, 200).fill(0x0b0e12);
-  g.rect(px - w / 2, py, w * f, 140).fill(color ?? (f > 0.6 ? 0x55d27a : f > 0.3 ? 0xffd866 : 0xe5534b));
+  g.roundRect(px - w / 2 - 35, py - 35, w + 70, 210, 105).fill({ color: 0x04070c, alpha: 0.85 }).stroke({ width: 22, color: 0xffffff, alpha: 0.12 });
+  if (f > 0) g.roundRect(px - w / 2, py, w * f, 140, 70).fill(color ?? (f > 0.6 ? 0x5bd88a : f > 0.3 ? 0xffcf5a : 0xff6259));
 }

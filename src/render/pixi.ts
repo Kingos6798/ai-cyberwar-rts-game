@@ -8,12 +8,14 @@ import { viewport, type Frame, type Renderer, type ScreenBox } from './renderer.
 export async function createPixiRenderer(mapWidth: number, mapHeight: number): Promise<Renderer> {
   const app = new Application();
   // The game loop in main.ts calls render() once per frame, so Pixi's own ticker stays off.
-  await app.init({ resizeTo: window, background: '#0b0e12', antialias: true, autoStart: false });
+  await app.init({ resizeTo: window, background: '#060910', antialias: true, autoStart: false });
   document.body.appendChild(app.canvas);
   const stage = new Container();
   const g = new Graphics();
   const fxLayer = new Graphics();
   const boxG = new Graphics();
+  // Effects glow: additive blending brightens where light overlaps.
+  fxLayer.blendMode = 'add';
   stage.addChild(g, fxLayer);
   app.stage.addChild(stage, boxG);
 

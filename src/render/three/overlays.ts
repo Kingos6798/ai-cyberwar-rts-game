@@ -73,7 +73,7 @@ export function createOverlayLayer(scene: Scene, camera: Camera): OverlayLayer {
     d.scale.set(w + 0.08, hh + 0.08, 1);
     d.updateMatrix();
     barBack.setMatrixAt(nBar, d.matrix);
-    barBack.setColorAt(nBar, c.set(0x0b0e12));
+    barBack.setColorAt(nBar, c.set(0x04070c));
     d.position.addScaledVector(right, -(w / 2) + (w * f) / 2);
     d.scale.set(Math.max(0.001, w * f), hh, 1);
     d.updateMatrix();
@@ -82,7 +82,7 @@ export function createOverlayLayer(scene: Scene, camera: Camera): OverlayLayer {
     nBar++;
   }
 
-  const hpColor = (f: number) => (f > 0.6 ? COLORS.hpGood : f > 0.3 ? 0xffd866 : COLORS.hpBad);
+  const hpColor = (f: number) => (f > 0.6 ? COLORS.hpGood : f > 0.3 ? 0xffcf5a : COLORS.hpBad);
 
   function line(ax: number, az: number, bx: number, bz: number, y: number, color: number, a: number): void {
     if (nLine >= LINE_CAP) return;

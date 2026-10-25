@@ -8,6 +8,10 @@
 // &map=duel|long picks the map (Duel is the default; Long Haul is longer, with two fiber routes).
 // Testing: &human=rush|boom|turtle lets a bot play your side (to watch or screenshot), &autostart skips the start screen,
 // &skip=60 fast-forwards 60 seconds before the first frame.
+import '@fontsource/chakra-petch/latin-500.css';
+import '@fontsource/chakra-petch/latin-600.css';
+import '@fontsource/chakra-petch/latin-700.css';
+import './ui.css';
 import { createLlmBrain, createOllamaClient, type LlmClient } from './ai/llm/client.ts';
 import { filterChat } from './ai/llm/filter.ts';
 import { createGeneral } from './ai/llm/general.ts';

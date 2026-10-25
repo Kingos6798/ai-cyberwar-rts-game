@@ -115,35 +115,69 @@ export function composition(list: UnitView[]): string {
 }
 
 /** Engagement lines, hit flashes, death markers and pings, drawn on top of the world. */
+/** Deaths (flash, shock ring, shards) and alert pings (two rippling rings). */
+export function drawBursts(g: Graphics, fx: Effects, now: number): void {
+  for (const d of fx.deaths) {
+    // Death: a flash, an expanding shock ring and shards flying out, all fading over 1.5 s.
+    const age = 1 - Math.max(0, (d.until - now) / 1500);
+    const fade = 1 - age;
+    if (age < 0.15) g.circle(d.x, d.y, 500 + age * 4000).fill({ color: 0xffffff, alpha: (0.15 - age) * 4 });
+    g.circle(d.x, d.y, 400 + age * 2200).stroke({ width: 140 * fade + 20, color: d.color, alpha: 0.8 * fade });
+    const seed = (d.x * 7 + d.y * 13) % 360;
+    for (let i = 0; i < 9; i++) {
+      const a = ((seed + i * 40 + (i % 3) * 11) * Math.PI) / 180;
+      const dist = 300 + age * (1400 + (i % 4) * 350);
+      const sx = d.x + Math.cos(a) * dist;
+      const sy = d.y + Math.sin(a) * dist;
+      g.moveTo(sx, sy).lineTo(sx + Math.cos(a) * 260 * fade, sy + Math.sin(a) * 260 * fade).stroke({ width: 70, color: d.color, alpha: fade });
+    }
+    g.circle(d.x, d.y, 180).fill({ color: d.color, alpha: 0.5 * fade });
+  }
+  for (const p of fx.pings) {
+    // Alert pings: two rings rippling out from where the trouble is.
+    for (const off of [0, 0.5]) {
+      const t = ((now / 1000 + off) % 1);
+      const life = Math.min(1, (p.until - now) / 1000);
+      g.circle(p.x, p.y, 1200 + t * 3200).stroke({ width: 160 * (1 - t) + 30, color: p.color, alpha: (1 - t) * 0.8 * life });
+    }
+    g.circle(p.x, p.y, 380).fill({ color: p.color, alpha: 0.35 * Math.min(1, (p.until - now) / 1000) });
+  }
+}
+
 export function drawEffects(g: Graphics, v: FactionView, fx: Effects, now: number): void {
+  // Drawn on an additive layer (pixi.ts): overlapping light brightens, like real glow.
   g.clear();
   const byId = new Map<number, { x: number; y: number }>();
   for (const e of [...v.units, ...v.enemyUnits, ...v.buildings, ...v.enemyBuildings]) byId.set(e.id, e);
-  for (const [list, color] of [[v.units, 0x9fd0ff], [v.enemyUnits, 0xffc29a]] as const) {
+  for (const [list, color] of [[v.units, 0x7fc0ff], [v.enemyUnits, 0xffa766]] as const) {
     for (const u of list) {
       if (u.target === null) continue;
       const t = byId.get(u.target);
       if (!t) continue;
-      // In range (allowing for building footprints): the unit is firing, so draw the shot line.
+      // In range (allowing for building footprints): the unit is firing, so draw a tracer.
       const reach = UNITS[u.type].range + 1800;
       if (dist2(u.x, u.y, t.x, t.y) > reach * reach) continue;
-      g.moveTo(u.x, u.y).lineTo(t.x, t.y).stroke({ width: 50, color, alpha: 0.55 });
+      // A bolt travels from shooter to target over and over; its phase is staggered per unit.
+      const p = ((now + u.id * 137) % 420) / 420;
+      const hx = u.x + (t.x - u.x) * p;
+      const hy = u.y + (t.y - u.y) * p;
+      const tx = u.x + (t.x - u.x) * Math.max(0, p - 0.25);
+      const ty = u.y + (t.y - u.y) * Math.max(0, p - 0.25);
+      g.moveTo(u.x, u.y).lineTo(t.x, t.y).stroke({ width: 30, color, alpha: 0.12 });
+      g.moveTo(tx, ty).lineTo(hx, hy).stroke({ width: 110, color, alpha: 0.35 });
+      g.moveTo(tx, ty).lineTo(hx, hy).stroke({ width: 40, color: 0xffffff, alpha: 0.85 });
+      // Impact spark at the target as each bolt lands.
+      if (p > 0.8) g.circle(t.x, t.y, 160 + (p - 0.8) * 1600).fill({ color, alpha: (1 - p) * 2.5 });
     }
   }
-  for (const [id] of fx.flashes) {
+  for (const [id, until] of fx.flashes) {
     const e = byId.get(id);
-    if (e) g.circle(e.x, e.y, 480).fill({ color: 0xffffff, alpha: 0.5 });
+    if (!e) continue;
+    const k = Math.max(0, (until - now) / 150);
+    g.circle(e.x, e.y, 420 + (1 - k) * 260).fill({ color: 0xffffff, alpha: 0.35 * k });
+    g.circle(e.x, e.y, 560 + (1 - k) * 400).stroke({ width: 60, color: 0xffffff, alpha: 0.6 * k });
   }
-  for (const d of fx.deaths) {
-    const a = Math.max(0, (d.until - now) / 1500);
-    g.moveTo(d.x - 400, d.y - 400).lineTo(d.x + 400, d.y + 400).moveTo(d.x + 400, d.y - 400).lineTo(d.x - 400, d.y + 400)
-      .stroke({ width: 120, color: d.color, alpha: a });
-  }
-  for (const p of fx.pings) {
-    const t = (p.until - now) / 1000;
-    const r = 1500 + ((3 - t) % 1) * 2500;
-    g.circle(p.x, p.y, r).stroke({ width: 150, color: p.color, alpha: Math.min(1, t) });
-  }
+  drawBursts(g, fx, now);
 }
 
 const COUNTER: Record<Exclude<Role, 'worker'>, string> = {

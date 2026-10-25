@@ -36,7 +36,7 @@ export function drawFog(g: Graphics, view: FactionView): void {
       const fogged = tx < view.mapWidth && !seen[ty * view.mapWidth + tx];
       if (fogged && start < 0) start = tx;
       if (!fogged && start >= 0) {
-        g.rect(start * TILE, ty * TILE, (tx - start) * TILE, TILE).fill({ color: 0x000000, alpha: 0.6 });
+        g.rect(start * TILE, ty * TILE, (tx - start) * TILE, TILE).fill({ color: 0x02050b, alpha: 0.66 });
         start = -1;
       }
     }

@@ -26,8 +26,12 @@ export async function createThreeRenderer(mapWidth: number, mapHeight: number): 
   document.body.appendChild(canvas);
 
   const scene = new Scene();
-  scene.background = new Color(0x0b0e12);
-  scene.add(new HemisphereLight(0xb8c8e8, 0x1a1f28, 0.8));
+  scene.background = new Color(0x060910);
+  scene.add(new HemisphereLight(0xa9c4ef, 0x0b1220, 0.75));
+  // A cool blue rim light from the far side gives the low-poly meshes the console-glow edge of the 2D views.
+  const rim = new DirectionalLight(0x4aa3ff, 0.55);
+  rim.position.set(-40, 25, -30);
+  scene.add(rim);
   const sun = new DirectionalLight(0xfff1dd, 2.4);
   sun.position.set(mapWidth / 2 - 18, 40, mapHeight / 2 + 22);
   sun.target.position.set(mapWidth / 2, 0, mapHeight / 2);

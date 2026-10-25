@@ -24,7 +24,7 @@ export function createUnitLayer(scene: Scene): UnitLayer {
   const materials = new Map<Faction, MeshStandardMaterial>();
   for (const f of FACTIONS) {
     const c = new Color(ownerColor(f));
-    materials.set(f, new MeshStandardMaterial({ color: 0xffffff, emissive: c.clone().multiplyScalar(0.12), roughness: 0.45, metalness: 0.15, flatShading: true }));
+    materials.set(f, new MeshStandardMaterial({ color: 0xffffff, emissive: c.clone().multiplyScalar(0.2), roughness: 0.45, metalness: 0.15, flatShading: true }));
   }
   const headings = new Map<number, number>();
   const last = new Map<number, { x: number; y: number }>();

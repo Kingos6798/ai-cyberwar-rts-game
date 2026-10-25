@@ -18,8 +18,8 @@ export function bodyMaterial(o: Owner, ghost = false): MeshStandardMaterial {
   const key = `body:${o}:${ghost}`;
   let m = cache.get(key);
   if (!m) {
-    const c = new Color(ownerColor(o)).lerp(new Color(0x3b4452), 0.55);
-    m = new MeshStandardMaterial({ color: c, roughness: 0.75, metalness: 0.25, flatShading: true,
+    const c = new Color(ownerColor(o)).lerp(new Color(0x1b2636), 0.6);
+    m = new MeshStandardMaterial({ color: c, roughness: 0.6, metalness: 0.35, flatShading: true,
       transparent: ghost, opacity: ghost ? 0.35 : 1, depthWrite: !ghost });
     cache.set(key, m);
   }
@@ -32,7 +32,7 @@ export function trimMaterial(o: Owner, ghost = false): MeshStandardMaterial {
   let m = cache.get(key);
   if (!m) {
     const c = new Color(ownerColor(o));
-    m = new MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: o === 'unknown' || o === null ? 0.15 : 0.7,
+    m = new MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: o === 'unknown' || o === null ? 0.15 : 0.95,
       roughness: 0.4, transparent: ghost, opacity: ghost ? 0.35 : 1, depthWrite: !ghost });
     cache.set(key, m);
   }

@@ -14,7 +14,7 @@ export interface GroundLayer { update(view: FactionView, dtMs: number): void }
 
 export function createGroundLayer(scene: Scene, w: number, h: number): GroundLayer {
   // Surround: a darker apron so the map edge reads.
-  const apron = new Mesh(new PlaneGeometry(w + 80, h + 80).rotateX(-Math.PI / 2), new MeshStandardMaterial({ color: 0x0d1117, roughness: 1 }));
+  const apron = new Mesh(new PlaneGeometry(w + 80, h + 80).rotateX(-Math.PI / 2), new MeshStandardMaterial({ color: 0x070b12, roughness: 1 }));
   apron.position.set(w / 2, -0.02, h / 2);
   apron.receiveShadow = true;
   scene.add(apron);
@@ -29,7 +29,7 @@ export function createGroundLayer(scene: Scene, w: number, h: number): GroundLay
   const major: number[] = [];
   for (let x = 0; x <= w; x++) (x % 8 === 0 ? major : minor).push(x, 0.005, 0, x, 0.005, h);
   for (let y = 0; y <= h; y++) (y % 8 === 0 ? major : minor).push(0, 0.005, y, w, 0.005, y);
-  for (const [pts, color, opacity] of [[minor, 0x334055, 0.35], [major, 0x46566e, 0.6]] as const) {
+  for (const [pts, color, opacity] of [[minor, 0x2a3a52, 0.35], [major, 0x40618c, 0.55]] as const) {
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(pts, 3));
     scene.add(new LineSegments(g, new LineBasicMaterial({ color, transparent: true, opacity })));

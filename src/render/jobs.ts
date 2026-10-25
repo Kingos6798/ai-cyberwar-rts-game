@@ -14,7 +14,9 @@ export function drawJobs(g: Graphics, view: FactionView, color: number, now: num
     const job = u.job;
     if (!job) {
       // Idle: a small yellow marker over the worker's head.
-      g.circle(u.x, u.y - 800, 160).fill({ color: IDLE, alpha: 0.9 });
+      const bob = Math.sin(now / 260 + u.id) * 60;
+      g.poly([u.x, u.y - 1020 + bob, u.x + 170, u.y - 820 + bob, u.x, u.y - 620 + bob, u.x - 170, u.y - 820 + bob]).fill({ color: IDLE, alpha: 0.95 })
+        .stroke({ width: 40, color: 0x04070c, alpha: 0.8 });
       continue;
     }
     if (!job.working) {
@@ -41,8 +43,8 @@ export function drawJobs(g: Graphics, view: FactionView, color: number, now: num
       g.circle(x, y, 140).fill({ color: 0xffffff, alpha: 0.6 + 0.3 * Math.sin(now / 120) });
     }
     // A small bar over the worker while it works.
-    g.rect(u.x - 450, u.y - 980, 900, 140).fill(0x0b0e12);
-    g.rect(u.x - 450, u.y - 980, 900 * f, 140).fill(job.contested ? WARN : 0x7fd4ff);
+    g.roundRect(u.x - 480, u.y - 1010, 960, 200, 100).fill({ color: 0x04070c, alpha: 0.85 });
+    if (f > 0) g.roundRect(u.x - 450, u.y - 980, 900 * f, 140, 70).fill(job.contested ? WARN : 0x7fd4ff);
   }
 }
 
