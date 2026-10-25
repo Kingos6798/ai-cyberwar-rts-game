@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date, decision, options considered, reason. Changes to design pillars need owner approval.
 
+## D-020 — 2026-10-25 — Cloud General: OpenAI-compatible API, player's own key in the browser
+- **Decision:** cloud mode is in scope (Gate 2 owner decision), for players who can't or don't want to run Ollama.
+  - **Provider:** an OpenAI-compatible `/chat/completions` client (`src/ai/llm/openai.ts`), so OpenAI and compatible services (OpenRouter, Groq, LM Studio, Ollama's `/v1`) all work. JSON mode for the reply; the turn validator checks its shape.
+  - **Key, browser:** each player enters their own key (`?ai=llm&provider=openai`). It is kept in session storage, or in local storage only if they tick "remember". It is sent only in the Authorization header to `api.openai.com`, and never put in the URL, the build, logs or error messages. `&newkey` forgets it. The browser never takes a custom API address from a link, because a shared link could send a saved key elsewhere.
+  - **Key, headless:** `--provider openai` reads `OPENAI_API_KEY` (and optional `OPENAI_BASE_URL`) from the environment or a local `.env`.
+- **Options:** player's key in the browser (chosen); a local proxy holding a developer key (`npm run proxy`, safer for keys but players need Node); both.
+- **Reason:** in-browser keys are the only option that works for a hosted build with no server. The project never holds anyone's key.
+- **Open:** default cloud model and cost per match, to be measured with the Gate 2 head-to-head once a key is available (#29).
+- **Approved:** owner, 2026-10-25.
+
 ## D-019 — 2026-10-24 — Gate 2 bar: head-to-head against the control; bot checks become warnings
 - **Decision (amends D-018):**
   - Criteria 1 (bots survive pressure) and 2 (fair mirrors) become warnings in `npm run balance`, as D-015 did for Gate 1's bot proxies.
