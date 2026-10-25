@@ -4,6 +4,7 @@ import type { Graphics } from 'pixi.js';
 import { construction, dist2, TILE, training, UNITS, type FactionView, type Role, type UnitView } from '../sim/index.ts';
 import { pretty } from './card.ts';
 import { constructionText, trainingText } from './hud.ts';
+import { ALERT_PREFIX } from './sound.ts';
 import { sourceWarnings, workforce } from './jobs.ts';
 
 interface Mark { x: number; y: number; until: number; color: number }
@@ -35,7 +36,7 @@ export function updateEffects(fx: Effects, v: FactionView, now: number): string[
     if (before !== undefined && e.hp < before) {
       fx.flashes.set(e.id, now + 150);
       if (mine && 'built' in e) {
-        alert(fx, alerts, `hit:${e.id}`, now, `⚠ Your ${pretty(e.type)} is under attack!`);
+        alert(fx, alerts, `hit:${e.id}`, now, `${ALERT_PREFIX.attack}${pretty(e.type)} is under attack!`);
         fx.pings.push({ x: e.x, y: e.y, until: now + 2000, color: 0xe5534b });
       }
     }
@@ -62,7 +63,7 @@ export function updateEffects(fx: Effects, v: FactionView, now: number): string[
   if (ourHalf.length >= 2) {
     const cx = Math.trunc(ourHalf.reduce((s, e) => s + e.x, 0) / ourHalf.length);
     const cy = Math.trunc(ourHalf.reduce((s, e) => s + e.y, 0) / ourHalf.length);
-    if (alert(fx, alerts, `spotted:${ourHalf[0]!.sector}`, now, `⚠ AI forces spotted in sector ${ourHalf[0]!.sector}: ${composition(ourHalf)}`)) {
+    if (alert(fx, alerts, `spotted:${ourHalf[0]!.sector}`, now, `${ALERT_PREFIX.spotted} in sector ${ourHalf[0]!.sector}: ${composition(ourHalf)}`)) {
       fx.pings.push({ x: cx, y: cy, until: now + 3000, color: 0xffd866 });
     }
   }
@@ -70,7 +71,7 @@ export function updateEffects(fx: Effects, v: FactionView, now: number): string[
     const near = raiders.filter((e) => dist2(e.x, e.y, b.x, b.y) < (14 * TILE) ** 2);
     if (near.length === 0) continue;
     const key = `near:${b.sector}`;
-    if (alert(fx, alerts, key, now, `⚠ Enemy forces approaching your ${pretty(b.type)} (${b.sector}): ${composition(near)}`)) {
+    if (alert(fx, alerts, key, now, `${ALERT_PREFIX.approaching} your ${pretty(b.type)} (${b.sector}): ${composition(near)}`)) {
       const cx = Math.trunc(near.reduce((s, e) => s + e.x, 0) / near.length);
       const cy = Math.trunc(near.reduce((s, e) => s + e.y, 0) / near.length);
       fx.pings.push({ x: cx, y: cy, until: now + 3000, color: 0xffd866 });
