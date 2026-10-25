@@ -22,14 +22,16 @@ import { createMood, createMusic, fighting, updateMood } from './render/music.ts
 import { createGroups, groupCenter, ownIds, recallGroup, saveGroup, tapGroup } from './render/groups.ts';
 import { createSound, cueFor } from './render/sound.ts';
 import { boxSelectWhere, describeAt, describeMode, key, modeClick, pickOwn, rightClick, sameTypeWhere, type UiState } from './render/input.ts';
-import { createMobileBar, isTouchUi, touchWords } from './render/mobile.ts';
+import { createMobileBar, isTouchUi, loadSettings, touchWords } from './render/mobile.ts';
 import { createRenderer, rendererKind, viewport } from './render/renderer.ts';
 import { createGestures, type Gesture } from './render/touch.ts';
 import { setWording, word } from './render/wording.ts';
 import { applyCommand, factionView, issue, MAPS, spawnUnit, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
 
 const params = new URLSearchParams(location.search);
-const aiParam = params.get('ai') ?? 'training';
+// The phone's settings menu (mobile port) saves view, map and opponent; URL options still win.
+const saved = loadSettings();
+const aiParam = params.get('ai') ?? (saved.ai && OPPONENTS[saved.ai] ? saved.ai : 'training');
 const blind = aiParam === 'blind';
 // Outside the sim, so Math.random is fine: the blind pick must not be guessable from the seed.
 const useLlm = aiParam === 'llm' || (blind && Math.random() < 0.5);
@@ -44,7 +46,8 @@ const general = useLlm
   : null;
 const aiName = blind ? 'AI (blind test)' : general ? `The Model (${model})` : `AI (${strategy.name})`;
 // ?map=duel|long picks the map (#5); unknown ids fall back to Duel.
-const mapId = MAPS[params.get('map') ?? ''] ? params.get('map')! : 'duel';
+const mapParam = params.get('map') ?? saved.map ?? '';
+const mapId = MAPS[mapParam] ? mapParam : 'duel';
 const session = createSession({ seed, mapId, controllers: {
   ai: general ?? createScriptedBot('ai', strategy, seed),
   ...(humanBot ? { human: createScriptedBot('human', humanBot, seed) } : {}),
@@ -71,7 +74,8 @@ if (touchUi) {
   setWording(touchWords);
 }
 
-const renderer = await createRenderer(rendererKind(params.get('renderer')), world.map.width, world.map.height);
+const kind = rendererKind(params.get('renderer') ?? saved.renderer ?? null);
+const renderer = await createRenderer(kind, world.map.width, world.map.height);
 renderer.fit();
 const fx = createEffects();
 
@@ -257,6 +261,10 @@ const mobileBar = touchUi ? createMobileBar(hudRoot, {
   deselect: () => { ui.selected.clear(); ui.mode = { type: 'none' }; },
   fit: () => renderer.fit(),
   onBoxMode: () => {},
+}, {
+  current: { renderer: kind, map: mapId, ai: OPPONENTS[aiParam] ? aiParam : 'training' },
+  maps: Object.values(MAPS).map((m) => ({ id: m.id, name: m.name })),
+  opponents: Object.keys(OPPONENTS),
 }) : null;
 // Installed as an app (mobile port): cache the game for offline play. Production builds only.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

@@ -20,6 +20,27 @@ export function touchWords(text: string): string {
     .replace(/Drag a box or tap a unit/g, 'Tap a unit, or use ⬚ Box');
 }
 
+/** Choices from the phone's settings menu; URL options win over them. Saved per device. */
+export interface GameSettings { renderer?: string; map?: string; ai?: string }
+const SETTINGS_KEY = 'ai-cyberwar-settings';
+
+export function loadSettings(): GameSettings {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
+    return s && typeof s === 'object' ? s : {};
+  } catch { return {}; }
+}
+
+function saveSettings(s: GameSettings): void {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* not saved: applies to this game only */ }
+}
+
+export interface SettingsChoices {
+  current: Required<GameSettings>;
+  maps: { id: string; name: string }[];
+  opponents: string[];
+}
+
 export interface MobileBar {
   readonly boxMode: boolean;
   setPaused(paused: boolean): void;
@@ -33,7 +54,7 @@ export function createMobileBar(root: HTMLElement, actions: {
   deselect: () => void;
   fit: () => void;
   onBoxMode: (on: boolean) => void;
-}): MobileBar {
+}, settings: SettingsChoices): MobileBar {
   const bar = document.createElement('div');
   bar.id = 'mobile-bar';
   bar.className = 'hud-panel';
@@ -42,14 +63,41 @@ export function createMobileBar(root: HTMLElement, actions: {
     <button type="button" data-a="speed" aria-label="Game speed">×1</button>
     <button type="button" data-a="box" aria-pressed="false" aria-label="Box select: drag to select">⬚ Box</button>
     <button type="button" data-a="deselect" aria-label="Deselect">✕</button>
-    <button type="button" data-a="fit" aria-label="Show whole map">⤢</button>`;
+    <button type="button" data-a="fit" aria-label="Show whole map">⤢</button>
+    <button type="button" data-a="settings" aria-label="Game settings">⚙</button>`;
   root.appendChild(bar);
+
+  // Settings: view, map and opponent. Applying saves them and starts a new game with them.
+  const opt = (value: string, label: string, on: string) => `<option value="${value}"${value === on ? ' selected' : ''}>${label}</option>`;
+  const name = (id: string) => id[0]!.toUpperCase() + id.slice(1);
+  const panel = document.createElement('div');
+  panel.id = 'settings-panel';
+  panel.className = 'hud-panel';
+  panel.hidden = true;
+  panel.innerHTML = `
+    <div class="settings-title">Game settings</div>
+    <label for="set-renderer">View</label>
+    <select id="set-renderer">${opt('pixi', 'Top-down', settings.current.renderer)}${opt('iso', 'Isometric', settings.current.renderer)}${opt('three', '3D', settings.current.renderer)}</select>
+    <label for="set-map">Map</label>
+    <select id="set-map">${settings.maps.map((m) => opt(m.id, m.name, settings.current.map)).join('')}</select>
+    <label for="set-ai">Opponent</label>
+    <select id="set-ai">${settings.opponents.map((o) => opt(o, name(o), settings.current.ai)).join('')}</select>
+    <div class="settings-note">Applying starts a new game.</div>
+    <div class="settings-buttons"><button type="button" data-s="cancel">Cancel</button><button type="button" data-s="apply">Apply</button></div>`;
+  root.appendChild(panel);
+  const pick = (id: string) => panel.querySelector<HTMLSelectElement>(`#${id}`)!.value;
+  panel.querySelector<HTMLButtonElement>('[data-s="cancel"]')!.onclick = () => { panel.hidden = true; };
+  panel.querySelector<HTMLButtonElement>('[data-s="apply"]')!.onclick = () => {
+    saveSettings({ renderer: pick('set-renderer'), map: pick('set-map'), ai: pick('set-ai') });
+    location.reload();
+  };
   const btn = (a: string) => bar.querySelector<HTMLButtonElement>(`[data-a="${a}"]`)!;
   let boxMode = false;
   btn('pause').onclick = actions.togglePause;
   btn('speed').onclick = actions.cycleSpeed;
   btn('deselect').onclick = actions.deselect;
   btn('fit').onclick = actions.fit;
+  btn('settings').onclick = () => { panel.hidden = !panel.hidden; };
   btn('box').onclick = () => {
     boxMode = !boxMode;
     btn('box').setAttribute('aria-pressed', String(boxMode));

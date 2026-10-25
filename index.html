@@ -110,6 +110,16 @@
         border-radius: 6px; font: 600 14px system-ui; }
       body.touch #mobile-bar button.on { background: #1d3b5c; border-color: var(--human); color: #fff; }
       body.touch #hud-tip { max-width: 70vw; }
+      body.touch #settings-panel { right: 64px; top: 34px; width: 210px; display: grid; gap: 4px; font-size: 13px; z-index: 5; }
+      body.touch #settings-panel[hidden] { display: none; }
+      body.touch #settings-panel .settings-title { font-weight: 600; margin-bottom: 2px; }
+      body.touch #settings-panel label { color: var(--dim); font-size: 11px; margin-top: 4px; }
+      body.touch #settings-panel select { font: inherit; padding: 6px; min-height: 36px; background: #1f2630; color: var(--text); border: 1px solid #3a4250; border-radius: 4px; }
+      body.touch #settings-panel .settings-note { color: var(--dim); font-size: 11px; margin-top: 4px; }
+      body.touch #settings-panel .settings-buttons { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+      body.touch #settings-panel .settings-buttons button { min-height: 36px; padding: 0 14px; background: #1f2630; color: var(--text); border: 1px solid #3a4250; border-radius: 6px; font: inherit; }
+      body.touch #settings-panel .settings-buttons button[data-s="apply"] { background: var(--human); color: #001; border-color: var(--human); font-weight: 600; }
+      body.touch #mobile-bar { max-height: calc(100vh - 110px); overflow-y: auto; }
       #rotate-hint { display: none; }
       @media (orientation: portrait) {
         body.touch #rotate-hint { display: block; position: fixed; left: 8px; right: 8px; top: 40%; text-align: center; background: var(--panel);
