@@ -4,6 +4,7 @@
 // model is unreachable the General's base plays on as the scripted bot). Blind test (Gate 2): ?ai=blind picks
 // the LLM General or scripted boom at random, hides which and hides chat, and reveals it after the match.
 // &renderer=pixi|three|iso picks the view (M4.0 renderer spike, D-017); pixi (top-down 2D) is the default.
+// &map=duel|long picks the map (Duel is the default; Long Haul is longer, with two fiber routes).
 // Testing: &human=rush|boom|turtle lets a bot play your side (to watch or screenshot), &autostart skips the start screen,
 // &skip=60 fast-forwards 60 seconds before the first frame.
 import { createLlmBrain, createOllamaClient } from './ai/llm/client.ts';
@@ -25,7 +26,7 @@ import { createMobileBar, isTouchUi, touchWords } from './render/mobile.ts';
 import { createRenderer, rendererKind, viewport } from './render/renderer.ts';
 import { createGestures, type Gesture } from './render/touch.ts';
 import { setWording, word } from './render/wording.ts';
-import { applyCommand, factionView, issue, spawnUnit, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
+import { applyCommand, factionView, issue, MAPS, spawnUnit, TICK_RATE, TILE, toReplay, type Command } from './sim/index.ts';
 
 const params = new URLSearchParams(location.search);
 const aiParam = params.get('ai') ?? 'training';
@@ -42,7 +43,9 @@ const general = useLlm
   ? createGeneral('ai', createLlmBrain(createOllamaClient({ model, think: false, ...(ollama ? { url: ollama } : {}) }), 'ai'), strategy, { seed })
   : null;
 const aiName = blind ? 'AI (blind test)' : general ? `The Model (${model})` : `AI (${strategy.name})`;
-const session = createSession({ seed, controllers: {
+// ?map=duel|long picks the map (#5); unknown ids fall back to Duel.
+const mapId = MAPS[params.get('map') ?? ''] ? params.get('map')! : 'duel';
+const session = createSession({ seed, mapId, controllers: {
   ai: general ?? createScriptedBot('ai', strategy, seed),
   ...(humanBot ? { human: createScriptedBot('human', humanBot, seed) } : {}),
 } });

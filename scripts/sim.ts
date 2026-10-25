@@ -1,10 +1,10 @@
 // Headless match runner.
-// Usage: npm run sim -- --matches 10 --minutes 20 --seed 1 --human boom --ai rush [--max-ms 10000] [--verbose]
+// Usage: npm run sim -- --matches 10 --minutes 20 --seed 1 --human boom --ai rush [--map duel|long] [--max-ms 10000] [--verbose]
 // --max-ms: performance budget per match; exits non-zero if any match is slower (used by CI).
 import { parseArgs } from 'node:util';
 import { createScriptedBot, OPPONENTS } from '../src/ai/scripted.ts';
 import { runMatch } from '../src/harness/match.ts';
-import { describeView, factionView, hashWorld, TICK_RATE } from '../src/sim/index.ts';
+import { describeView, factionView, hashWorld, MAPS, TICK_RATE } from '../src/sim/index.ts';
 
 const { values } = parseArgs({
   options: {
@@ -13,6 +13,7 @@ const { values } = parseArgs({
     seed: { type: 'string', default: '1' },
     human: { type: 'string', default: 'boom' },
     ai: { type: 'string', default: 'boom' },
+    map: { type: 'string', default: 'duel' },
     'max-ms': { type: 'string' },
     verbose: { type: 'boolean', default: false },
   },
@@ -20,6 +21,10 @@ const { values } = parseArgs({
 
 const humanStrategy = OPPONENTS[values.human];
 const aiStrategy = OPPONENTS[values.ai];
+if (!MAPS[values.map]) {
+  console.error(`unknown map; choose from: ${Object.keys(MAPS).join(', ')}`);
+  process.exit(2);
+}
 if (!humanStrategy || !aiStrategy) {
   console.error(`unknown strategy; choose from: ${Object.keys(OPPONENTS).join(', ')}`);
   process.exit(2);
@@ -38,7 +43,7 @@ for (let i = 0; i < matches; i++) {
   const seed = baseSeed + i;
   const matchStart = performance.now();
   const r = runMatch({
-    seed, maxTicks,
+    seed, maxTicks, mapId: values.map,
     human: createScriptedBot('human', humanStrategy, seed),
     ai: createScriptedBot('ai', aiStrategy, seed * 7919),
   });
