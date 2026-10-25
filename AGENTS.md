@@ -44,6 +44,7 @@ npm run build
 # http://localhost:5173/?seed=3&human=boom&ai=turtle&autostart&skip=40
 # human=<strategy> lets a bot play your side, autostart skips the start screen, skip=N fast-forwards N seconds.
 # Play the LLM General (needs `ollama serve`): http://localhost:5173/?ai=llm&model=qwen3:8b  · blind test: ?ai=blind
+npm run shot -- "http://localhost:5173/?seed=3&human=boom&ai=turtle&autostart" shot.png --wait 20   # headless screenshot after 20 s of real time (needs `npm run dev`); prints page errors, exits 1 if the page threw. Chrome/Edge/Chromium, or set BROWSER_PATH
 ```
 
 ## Definition of done
