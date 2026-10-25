@@ -66,5 +66,5 @@ export function createLlmBrain(client: LlmClient, faction: Faction, opts: { time
   const system = systemPrompt(faction);
   const schema = turnSchema(faction);
   const timeoutMs = opts.timeoutMs ?? 10_000;
-  return ({ digest }) => client.complete({ system, user: userPrompt(digest), schema }, AbortSignal.timeout(timeoutMs));
+  return ({ digest, youSaid }) => client.complete({ system, user: userPrompt(digest, youSaid), schema }, AbortSignal.timeout(timeoutMs));
 }
