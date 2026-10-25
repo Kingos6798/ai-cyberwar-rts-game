@@ -21,7 +21,8 @@
     "llm-turn": "node scripts/llm-turn.ts",
     "llm-match": "node scripts/llm-match.ts",
     "android:sync": "vite build && cap sync android",
-    "icons": "node scripts/make-icons.ts"
+    "icons": "node scripts/make-icons.ts",
+    "shot": "node scripts/shot.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
